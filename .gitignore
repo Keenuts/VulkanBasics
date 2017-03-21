@@ -1,0 +1,4 @@
+*.o
+viewer
+tags
+.gdbinit
