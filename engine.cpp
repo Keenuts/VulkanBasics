@@ -44,6 +44,8 @@ Engine::Engine()
 	_instance_extension_names = std::vector<const char *>();
 	_device_extension_names = std::vector<const char *>();
 	_desc_layout = std::vector<VkDescriptorSetLayout>();
+	_desc_set = std::vector<VkDescriptorSet>();
+
 /*
 	_camera = vec3(3, 5, 0);
 	_origin = vec3(0, 0, 0);
@@ -58,7 +60,7 @@ VkResult Engine::init()
 {
 	VkResult res;
 	
-	_window = XcbWindows(_width, _height);
+	//_window = XcbWindows(_width, _height);
 
 	res = initvk();
 	assert(res == VK_SUCCESS && "Unable to do initvk()");
@@ -83,6 +85,9 @@ VkResult Engine::init()
 
 	res = createPipeline();
 	assert(res == VK_SUCCESS && "Unable to do createPipeline()");
+
+	res = initDescriptors();
+	assert(res == VK_SUCCESS && "Unable to do initDescriptors");
 
 	printf("%s\n", vulkanErr(res));
 	
@@ -570,6 +575,54 @@ VkResult Engine::createPipeline()
 
 	return VK_SUCCESS;
 	
+}
+
+#define NUM_DESCRIPTOR_SETS 1
+
+VkResult Engine::initDescriptors()
+{
+	VkDescriptorPoolSize type_count[1];
+	type_count[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	type_count[0].descriptorCount = 1;
+
+	VkDescriptorPoolCreateInfo pool_info = {};
+	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pool_info.pNext = NULL;
+	pool_info.maxSets = 1;
+	pool_info.poolSizeCount = 1;
+	pool_info.pPoolSizes = type_count;
+
+	VkResult res = vkCreateDescriptorPool(_device, &pool_info, NULL, &_desc_pool);
+	assert(res == VK_SUCCESS);
+
+	VkDescriptorSetAllocateInfo alloc_info[1];
+	alloc_info[0].sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	alloc_info[0].pNext = NULL;
+	alloc_info[0].descriptorPool = _desc_pool;
+	alloc_info[0].descriptorSetCount = NUM_DESCRIPTOR_SETS;
+	alloc_info[0].pSetLayouts = _desc_layout.data();
+	
+	_desc_set.resize(NUM_DESCRIPTOR_SETS);
+	res = vkAllocateDescriptorSets(_device, alloc_info, _desc_set.data());
+	assert(res == VK_SUCCESS);
+
+	VkWriteDescriptorSet writes[1];
+
+	writes[0] = {};
+	writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[0].pNext = NULL;
+	writes[0].dstSet = _desc_set[0];
+	writes[0].descriptorCount = 1;
+	writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	writes[0].pBufferInfo = &_uniform_data.buffer_info;
+	writes[0].dstArrayElement = 0;
+	writes[0].dstBinding = 0;
+
+	vkUpdateDescriptorSets(_device, 1, writes, 0, NULL);
+
+
+	
+	return VK_SUCCESS;
 }
 
 void Engine::run()

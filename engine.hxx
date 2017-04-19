@@ -118,6 +118,9 @@ class Engine
 
 		std::vector<SwapchainBuffer> _buffers;
 		std::vector<VkDescriptorSetLayout> _desc_layout;
+		std::vector<VkDescriptorSet> _desc_set;
+
+		VkDescriptorPool _desc_pool;
 
 		//Matrices
 		glm::mat4 _clip_matrix;
@@ -150,6 +153,7 @@ class Engine
 		VkResult createDepthBuffer();
 		VkResult createUniformBuffer();
 		VkResult createPipeline();
+		VkResult initDescriptors();
 
 		
 
