@@ -94,6 +94,7 @@ class Engine
 		VkInstance _instance;
 
 		std::vector<const char *> _instance_extension_names;
+		std::vector<const char *> _instance_validation_layers;
 		std::vector<const char *> _device_extension_names;
 
 		VkPhysicalDevice *_phys_devices;
@@ -109,7 +110,6 @@ class Engine
 		VkCommandBuffer _cmd_buffer;
 
 		VkSurfaceKHR _surface;
-		VkFormat _format;
 		VkColorSpaceKHR _color_space;
 		VkSwapchainKHR _swapchain;
 		DepthMap _depth;

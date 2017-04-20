@@ -42,6 +42,7 @@ Engine::Engine()
 		_cmd_buffer(0)
 {
 	_instance_extension_names = std::vector<const char *>();
+	_instance_validation_layers = std::vector<const char *>();
 	_device_extension_names = std::vector<const char *>();
 	_desc_layout = std::vector<VkDescriptorSetLayout>();
 	_desc_set = std::vector<VkDescriptorSet>();
@@ -82,6 +83,9 @@ VkResult Engine::init()
 
 	res = createDepthBuffer();
 	assert(res == VK_SUCCESS && "Unable to do createDepthBuffer()");
+	
+	res = createUniformBuffer();
+	assert(res == VK_SUCCESS && "Unable to do createUniformBuffer()");
 
 	res = createPipeline();
 	assert(res == VK_SUCCESS && "Unable to do createPipeline()");
@@ -97,7 +101,7 @@ VkResult Engine::init()
 VkResult Engine::initvk()
 {
 	VkApplicationInfo application_info = {
-		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+		.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
 		.pNext = NULL,
 		.pApplicationName = "Viewer",
 		.applicationVersion = 0,
@@ -124,14 +128,17 @@ VkResult Engine::initvk()
 	_instance_extension_names.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
 	_instance_extension_names.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
 	_instance_extension_names.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+
+	// Validation layers loading
+	_instance_validation_layers.push_back("VK_LAYER_LUNARG_standard_validation");
 	
 	VkInstanceCreateInfo create_info = {
 		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
 		.pNext = NULL,
 		.flags = 0,
 		.pApplicationInfo = &application_info,
-		.enabledLayerCount = 0,
-		.ppEnabledLayerNames = NULL,
+		.enabledLayerCount = static_cast<uint32_t>(_instance_validation_layers.size()),
+		.ppEnabledLayerNames = _instance_validation_layers.data(),
 		.enabledExtensionCount = static_cast<uint32_t>(_instance_extension_names.size()),
 		.ppEnabledExtensionNames = _instance_extension_names.data(),
 	};
@@ -147,6 +154,13 @@ VkResult Engine::getDevices()
 
 	_phys_devices = new VkPhysicalDevice[gpu_count];
 	res = vkEnumeratePhysicalDevices(_instance, &gpu_count, _phys_devices);
+
+	for (uint32_t i = 0; i < gpu_count; i++) {
+		VkPhysicalDeviceProperties deviceInfo;
+		vkGetPhysicalDeviceProperties(_phys_devices[i], &deviceInfo);
+		std::cout << "\t[" << i << "] " << deviceInfo.deviceName << std::endl;
+	}
+
 	return res;
 }
 
@@ -289,7 +303,6 @@ VkResult Engine::getSupportedFormats()
 																						 &count_formats, NULL);
 	assert(res == VK_SUCCESS);
 
-	_format = VK_FORMAT_B8G8R8A8_UNORM;
 	_color_space = supported[0].colorSpace;
 
 	return VK_SUCCESS;
@@ -318,7 +331,7 @@ VkResult Engine::createSwapchain()
   VkSurfaceCapabilitiesKHR capabilities;
 	res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(_phys_devices[0], _surface, &capabilities);
 	assert(res == VK_SUCCESS);
-	
+
 	// Getting present modes
 	uint32_t present_count = 0;
 	res = vkGetPhysicalDeviceSurfacePresentModesKHR(_phys_devices[0], _surface,
@@ -337,24 +350,46 @@ VkResult Engine::createSwapchain()
 	swapchain_info.flags = 0;
 	swapchain_info.surface = _surface;
 	swapchain_info.minImageCount = capabilities.minImageCount;
-	swapchain_info.imageFormat = _format;
 	swapchain_info.imageColorSpace = _color_space;
 
-	if ( capabilities.currentExtent.width == UINT32_MAX || capabilities.currentExtent.height == UINT32_MAX )
+	if (capabilities.currentExtent.width == UINT32_MAX || capabilities.currentExtent.height == UINT32_MAX)
 		swapchain_info.imageExtent = capabilities.maxImageExtent;
 	else {
+		if (capabilities.minImageExtent.width > _width)
+			_width = capabilities.minImageExtent.width;
+		if (capabilities.minImageExtent.height > _height)
+			_height = capabilities.minImageExtent.height;
 		swapchain_info.imageExtent.width = _width;
 		swapchain_info.imageExtent.height = _height;
 	}
+
 	std::cout << "Setting extents to " << swapchain_info.imageExtent.width 
 						<< "x" << swapchain_info.imageExtent.height << std::endl;
+
+	// Getting Available surface formats
+	uint32_t nbrAvailableFormats = 0;
+	res = vkGetPhysicalDeviceSurfaceFormatsKHR(_phys_devices[0], _surface, &nbrAvailableFormats, NULL);
+	assert (res == VK_SUCCESS && "Unable to fetch VkSurfaceFormatKHR number");
+
+	VkSurfaceFormatKHR* surfaceFormats = (VkSurfaceFormatKHR*)malloc(nbrAvailableFormats * sizeof(VkSurfaceFormatKHR));
+	res = vkGetPhysicalDeviceSurfaceFormatsKHR(_phys_devices[0], _surface, &nbrAvailableFormats, surfaceFormats);
+	assert (res == VK_SUCCESS && "Unable to fetch VkSurfaceFormatKHR array");
+	if (nbrAvailableFormats == 1 && surfaceFormats[0].format == VK_FORMAT_UNDEFINED)
+		swapchain_info.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
+	else {
+		assert(nbrAvailableFormats >= 1);
+		swapchain_info.imageFormat = surfaceFormats[0].format;
+	}
+	free(surfaceFormats);
 	
 	swapchain_info.imageArrayLayers = 1;
-	swapchain_info.imageUsage = 0;
+	swapchain_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	swapchain_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	swapchain_info.queueFamilyIndexCount = 0;
 	swapchain_info.pQueueFamilyIndices = NULL;
 	swapchain_info.preTransform = capabilities.currentTransform;
+	swapchain_info.oldSwapchain = VK_NULL_HANDLE;
+	swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 
 	VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
 	for (uint32_t i = 0; i < present_count; i++) {
@@ -397,7 +432,7 @@ VkResult Engine::createSwapchain()
 		color_image_view.flags = 0;
 		color_image_view.image = _buffers[i].image;
 		color_image_view.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		color_image_view.format = _format; 
+		color_image_view.format = swapchain_info.imageFormat; 
 		color_image_view.components.r = VK_COMPONENT_SWIZZLE_R;
 		color_image_view.components.g = VK_COMPONENT_SWIZZLE_G;
 		color_image_view.components.b = VK_COMPONENT_SWIZZLE_B;
@@ -546,6 +581,7 @@ VkResult Engine::createUniformBuffer()
 VkResult Engine::createPipeline()
 {
 	// This command buffer will be used on the vertex stage
+	// Used to send data like mv mat
 	VkDescriptorSetLayoutBinding layout_binding = {};
 	layout_binding.binding = 0;
 	layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -559,7 +595,7 @@ VkResult Engine::createPipeline()
 	descriptor_layout.bindingCount = 1;
 	descriptor_layout.pBindings = &layout_binding;
 
-	_desc_layout.resize(1);
+	_desc_layout.resize(NUM_DESCRIPTORS);
 	VkResult res = vkCreateDescriptorSetLayout(_device, &descriptor_layout, NULL, _desc_layout.data());
 	assert(res == VK_SUCCESS);
 	
@@ -567,6 +603,8 @@ VkResult Engine::createPipeline()
 	pipeline_layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipeline_layout.pNext = NULL;
 	pipeline_layout.flags = 0;
+	pipeline_layout.pushConstantRangeCount = 0;
+	pipeline_layout.pPushConstantRanges = NULL;
 	pipeline_layout.setLayoutCount = NUM_DESCRIPTORS;	
 	pipeline_layout.pSetLayouts = _desc_layout.data();
 
@@ -576,8 +614,6 @@ VkResult Engine::createPipeline()
 	return VK_SUCCESS;
 	
 }
-
-#define NUM_DESCRIPTOR_SETS 1
 
 VkResult Engine::initDescriptors()
 {
@@ -599,10 +635,10 @@ VkResult Engine::initDescriptors()
 	alloc_info[0].sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	alloc_info[0].pNext = NULL;
 	alloc_info[0].descriptorPool = _desc_pool;
-	alloc_info[0].descriptorSetCount = NUM_DESCRIPTOR_SETS;
+	alloc_info[0].descriptorSetCount = NUM_DESCRIPTORS;
 	alloc_info[0].pSetLayouts = _desc_layout.data();
 	
-	_desc_set.resize(NUM_DESCRIPTOR_SETS);
+	_desc_set.resize(NUM_DESCRIPTORS);
 	res = vkAllocateDescriptorSets(_device, alloc_info, _desc_set.data());
 	assert(res == VK_SUCCESS);
 
@@ -620,10 +656,10 @@ VkResult Engine::initDescriptors()
 
 	vkUpdateDescriptorSets(_device, 1, writes, 0, NULL);
 
-
-	
 	return VK_SUCCESS;
 }
+
+
 
 void Engine::run()
 {
