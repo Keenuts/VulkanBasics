@@ -125,6 +125,7 @@ class Engine
 
 		uint32_t _current_buffer;
 		VkRenderPass _render_pass;
+		VkPipelineShaderStageCreateInfo _shader_stages[2];
 
 		//Matrices
 		glm::mat4 _clip_matrix;
@@ -159,6 +160,7 @@ class Engine
 		VkResult createPipeline();
 		VkResult initDescriptors();
 		VkResult createRenderPass();
+		VkResult initializeShaders();
 
 		
 

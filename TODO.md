@@ -1,6 +1,4 @@
 # Basic Vulkan setup
-- Descriptors sets 
-- Render pass
 - Shader compilation + support
 - Framebuffers
 - vertex buffers

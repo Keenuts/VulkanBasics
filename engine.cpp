@@ -15,6 +15,9 @@
 #include <iostream>
 #include <memory>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 
 
 #include <glm/mat4x4.hpp>
@@ -95,7 +98,11 @@ VkResult Engine::init()
 
 	res = createRenderPass();
 	assert(res == VK_SUCCESS && "Unable to do createRenderPass()");
-	printf("%s\n", vulkanErr(res));
+
+	res = initializeShaders();
+	assert(res == VK_SUCCESS && "Unable to do initShaders()");
+
+	printf("Done: %s\n", vulkanErr(res));
 	
 	return res;
 }
@@ -735,6 +742,79 @@ VkResult Engine::createRenderPass()
 	assert(res == VK_SUCCESS && "Unable to create the renderPass.");
 
 	//TODO destroy the renderpass
+
+	return VK_SUCCESS;
+}
+
+static int loadShader(const char* path, VkShaderStageFlagBits stageFlagBits,
+										  std::vector<unsigned int>& output) {
+	int fd = open(path, O_RDONLY);
+	if (fd < 0)
+		return 1;
+
+#ifdef LOG_VERBOSE
+	printf("[INFO] Loading shader: %s\n", path);
+#endif
+
+	uint64_t length = lseek(fd, 0, SEEK_END);
+	lseek(fd, 0, SEEK_SET);
+
+	output.resize(length / sizeof(unsigned int));
+	printf("\tReading %zu bytes (%zu uint).\n", length, output.size());
+	uint32_t ret = read(fd, output.data(), length);
+	close(fd);
+
+	return ret < 0;
+}
+
+#define CHECK(r) if ((r) != VK_SUCCESS) { return (r); }
+
+VkResult Engine::initializeShaders() {
+
+	std::vector<unsigned int> vertShader = std::vector<unsigned int>();
+	std::vector<unsigned int> fragShader = std::vector<unsigned int>();
+
+	if (loadShader("cube_vert.spv", VK_SHADER_STAGE_VERTEX_BIT, vertShader))
+		return VK_INCOMPLETE;
+	if (loadShader("cube_frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT, fragShader))
+		return VK_INCOMPLETE;
+
+	//TODO: Do this in a more clever way
+
+	_shader_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	_shader_stages[0].pNext = NULL;
+	_shader_stages[0].flags = 0;
+	_shader_stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	_shader_stages[0].pName = "main";
+	_shader_stages[0].pSpecializationInfo = NULL;
+
+	_shader_stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	_shader_stages[1].pNext = NULL;
+	_shader_stages[1].flags = 0;
+	_shader_stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	_shader_stages[1].pName = "main";
+	_shader_stages[1].pSpecializationInfo = NULL;
+
+	VkShaderModuleCreateInfo vertCreateInfo = {};
+	vertCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	vertCreateInfo.pNext = NULL;
+	vertCreateInfo.flags = 0;
+	vertCreateInfo.codeSize = vertShader.size() * sizeof(unsigned int);
+	vertCreateInfo.pCode = vertShader.data();
+
+	VkResult res = vkCreateShaderModule(_device, &vertCreateInfo, NULL, &_shader_stages[0].module);
+	CHECK(res)
+
+	VkShaderModuleCreateInfo fragCreateInfo = {};
+	fragCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	fragCreateInfo.pNext = NULL;
+	fragCreateInfo.flags = 0;
+	fragCreateInfo.codeSize = fragShader.size() * sizeof(unsigned int);
+	fragCreateInfo.pCode = fragShader.data();
+
+	res = vkCreateShaderModule(_device, &fragCreateInfo, NULL, &_shader_stages[1].module);
+	CHECK(res)
+
 
 	return VK_SUCCESS;
 }
