@@ -91,8 +91,10 @@ VkResult Engine::init()
 	assert(res == VK_SUCCESS && "Unable to do createPipeline()");
 
 	res = initDescriptors();
-	assert(res == VK_SUCCESS && "Unable to do initDescriptors");
+	assert(res == VK_SUCCESS && "Unable to do initDescriptors()");
 
+	res = createRenderPass();
+	assert(res == VK_SUCCESS && "Unable to do createRenderPass()");
 	printf("%s\n", vulkanErr(res));
 	
 	return res;
@@ -380,6 +382,7 @@ VkResult Engine::createSwapchain()
 		assert(nbrAvailableFormats >= 1);
 		swapchain_info.imageFormat = surfaceFormats[0].format;
 	}
+	_image_format = swapchain_info.imageFormat;
 	free(surfaceFormats);
 	
 	swapchain_info.imageArrayLayers = 1;
@@ -432,7 +435,7 @@ VkResult Engine::createSwapchain()
 		color_image_view.flags = 0;
 		color_image_view.image = _buffers[i].image;
 		color_image_view.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		color_image_view.format = swapchain_info.imageFormat; 
+		color_image_view.format = _image_format; 
 		color_image_view.components.r = VK_COMPONENT_SWIZZLE_R;
 		color_image_view.components.g = VK_COMPONENT_SWIZZLE_G;
 		color_image_view.components.b = VK_COMPONENT_SWIZZLE_B;
@@ -659,6 +662,82 @@ VkResult Engine::initDescriptors()
 	return VK_SUCCESS;
 }
 
+VkResult Engine::createRenderPass()
+{
+
+	//First step, get the semaphore
+	VkSemaphore imageAcquiredSemaphore;
+	VkSemaphoreCreateInfo imageAcquiredSemaphoreCreateInfo;
+	imageAcquiredSemaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	imageAcquiredSemaphoreCreateInfo.pNext = NULL;
+	imageAcquiredSemaphoreCreateInfo.flags = 0;
+
+	VkResult res = vkCreateSemaphore(_device, &imageAcquiredSemaphoreCreateInfo, NULL, &imageAcquiredSemaphore);
+	assert(res == VK_SUCCESS && "Could not acquire semephore in createRenderPass");
+
+	res = vkAcquireNextImageKHR(_device, _swapchain, UINT64_MAX, imageAcquiredSemaphore, VK_NULL_HANDLE, &_current_buffer);
+	assert(res == VK_SUCCESS && "Could not acquire the frame in createRenderPass");
+
+
+	VkAttachmentDescription attachments[2];
+	attachments[0].flags = 0;
+	attachments[0].format = _image_format;
+	attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
+	attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	attachments[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+	attachments[1].flags = 0;
+	attachments[1].format = _depth.format;
+	attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
+	attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference color_reference = {};
+	color_reference.attachment = 0;
+	color_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference depth_reference = {};
+	depth_reference.attachment = 1;
+	depth_reference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkSubpassDescription subpass = {};
+	subpass.flags = 0;
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS; 
+	subpass.inputAttachmentCount = 0;
+	subpass.pInputAttachments = NULL;
+	subpass.colorAttachmentCount = 1;
+	subpass.pColorAttachments = &color_reference;
+	subpass.pResolveAttachments = NULL;
+	subpass.pDepthStencilAttachment = &depth_reference;
+	subpass.preserveAttachmentCount = 0;
+	subpass.pPreserveAttachments = NULL;
+
+	VkRenderPassCreateInfo renderPassInfo = {};
+	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	renderPassInfo.pNext = NULL;
+	renderPassInfo.flags = 0;
+	renderPassInfo.attachmentCount = 2;
+	renderPassInfo.pAttachments = attachments;
+	renderPassInfo.subpassCount = 1;
+	renderPassInfo.pSubpasses = &subpass;
+	renderPassInfo.dependencyCount = 0;
+	renderPassInfo.pDependencies = NULL;
+
+	res = vkCreateRenderPass(_device, &renderPassInfo, NULL, &_render_pass);
+	assert(res == VK_SUCCESS && "Unable to create the renderPass.");
+
+	//TODO destroy the renderpass
+
+	return VK_SUCCESS;
+}
 
 
 void Engine::run()

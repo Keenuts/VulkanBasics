@@ -110,6 +110,7 @@ class Engine
 		VkCommandBuffer _cmd_buffer;
 
 		VkSurfaceKHR _surface;
+		VkFormat _image_format;
 		VkColorSpaceKHR _color_space;
 		VkSwapchainKHR _swapchain;
 		DepthMap _depth;
@@ -121,6 +122,9 @@ class Engine
 		std::vector<VkDescriptorSet> _desc_set;
 
 		VkDescriptorPool _desc_pool;
+
+		uint32_t _current_buffer;
+		VkRenderPass _render_pass;
 
 		//Matrices
 		glm::mat4 _clip_matrix;
@@ -154,6 +158,7 @@ class Engine
 		VkResult createUniformBuffer();
 		VkResult createPipeline();
 		VkResult initDescriptors();
+		VkResult createRenderPass();
 
 		
 
