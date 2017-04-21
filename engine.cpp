@@ -30,6 +30,8 @@
 #include "engine.hxx"
 #include "window.hxx"
 
+#define CHECK(r) if ((r) != VK_SUCCESS) { return (r); }
+
 Engine::Engine()
 	: _width(500),	
 	  _height(500), 
@@ -49,6 +51,7 @@ Engine::Engine()
 	_device_extension_names = std::vector<const char *>();
 	_desc_layout = std::vector<VkDescriptorSetLayout>();
 	_desc_set = std::vector<VkDescriptorSet>();
+	_framebuffers = NULL;
 
 /*
 	_camera = vec3(3, 5, 0);
@@ -100,7 +103,10 @@ VkResult Engine::init()
 	assert(res == VK_SUCCESS && "Unable to do createRenderPass()");
 
 	res = initializeShaders();
-	assert(res == VK_SUCCESS && "Unable to do initShaders()");
+	assert(res == VK_SUCCESS && "Unable to do initializeShaders()");
+	
+	res = InitializeFramebuffers();
+	assert(res == VK_SUCCESS && "Unable to do initializeFramebuffers()");
 
 	printf("Done: %s\n", vulkanErr(res));
 	
@@ -317,6 +323,10 @@ VkResult Engine::getSupportedFormats()
 	return VK_SUCCESS;
 }
 
+static uint32_t clamp(uint32_t value, uint32_t min, uint32_t max) {
+	return value < min ? min : (value > max ? max : value);
+}
+
 VkResult Engine::createSwapchain()
 {
 	VkXcbSurfaceCreateInfoKHR create_info = {
@@ -364,16 +374,16 @@ VkResult Engine::createSwapchain()
 	if (capabilities.currentExtent.width == UINT32_MAX || capabilities.currentExtent.height == UINT32_MAX)
 		swapchain_info.imageExtent = capabilities.maxImageExtent;
 	else {
-		if (capabilities.minImageExtent.width > _width)
-			_width = capabilities.minImageExtent.width;
-		if (capabilities.minImageExtent.height > _height)
-			_height = capabilities.minImageExtent.height;
+		_width = clamp(_width, capabilities.minImageExtent.width,
+									 capabilities.maxImageExtent.width);
+		_height = clamp(_height, capabilities.minImageExtent.height,
+									 capabilities.maxImageExtent.height);
 		swapchain_info.imageExtent.width = _width;
 		swapchain_info.imageExtent.height = _height;
 	}
 
-	std::cout << "Setting extents to " << swapchain_info.imageExtent.width 
-						<< "x" << swapchain_info.imageExtent.height << std::endl;
+	std::cout << "Setting extents to " << _width 
+						<< "x" << _height << std::endl;
 
 	// Getting Available surface formats
 	uint32_t nbrAvailableFormats = 0;
@@ -416,25 +426,26 @@ VkResult Engine::createSwapchain()
 	res = vkCreateSwapchainKHR(_device, &swapchain_info, NULL, &_swapchain);
 	assert(res == VK_SUCCESS);
 
-	uint32_t image_count = 0;
-	res = vkGetSwapchainImagesKHR(_device, _swapchain, &image_count, NULL);
-	assert(res == VK_SUCCESS && image_count > 0);
+	_swapchain_image_count = 0;
+	res = vkGetSwapchainImagesKHR(_device, _swapchain, &_swapchain_image_count, NULL);
+	assert(res == VK_SUCCESS && _swapchain_image_count > 0);
 
-	_images = std::vector<VkImage>(image_count);
-	_buffers = std::vector<SwapchainBuffer>(image_count);
+	_images = std::vector<VkImage>(_swapchain_image_count);
+	_buffers = std::vector<SwapchainBuffer>(_swapchain_image_count);
 
-	res = vkGetSwapchainImagesKHR(_device, _swapchain, &image_count, _images.data());
+	res = vkGetSwapchainImagesKHR(_device, _swapchain, &_swapchain_image_count, _images.data());
 	assert(res == VK_SUCCESS);
 
-	VkImage *swapchains_images = static_cast<VkImage*>(malloc(sizeof(VkImage) * image_count));
-	res = vkGetSwapchainImagesKHR(_device, _swapchain, &image_count, swapchains_images);
+	VkImage *swapchains_images = static_cast<VkImage*>(malloc(sizeof(VkImage)
+																										* _swapchain_image_count));
+	res = vkGetSwapchainImagesKHR(_device, _swapchain, &_swapchain_image_count, swapchains_images);
 	
-	for (uint32_t i = 0; i < image_count ; i++)
+	for (uint32_t i = 0; i < _swapchain_image_count ; i++)
 		_buffers[i].image = swapchains_images[i];
 	free(swapchains_images);
 
 
-	for (uint32_t i = 0; i < image_count ; i++)
+	for (uint32_t i = 0; i < _swapchain_image_count ; i++)
 	{
 		VkImageViewCreateInfo color_image_view = {};
 		color_image_view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -767,7 +778,6 @@ static int loadShader(const char* path, VkShaderStageFlagBits stageFlagBits,
 	return ret < 0;
 }
 
-#define CHECK(r) if ((r) != VK_SUCCESS) { return (r); }
 
 VkResult Engine::initializeShaders() {
 
@@ -813,12 +823,38 @@ VkResult Engine::initializeShaders() {
 	fragCreateInfo.pCode = fragShader.data();
 
 	res = vkCreateShaderModule(_device, &fragCreateInfo, NULL, &_shader_stages[1].module);
-	CHECK(res)
-
-
-	return VK_SUCCESS;
+	return res;
 }
 
+VkResult Engine::InitializeFramebuffers() {
+    VkImageView attachments[2];
+    attachments[1] = _depth.view;
+
+    VkFramebufferCreateInfo framebufferCreationInfo = {};
+    framebufferCreationInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    framebufferCreationInfo.pNext = NULL;
+		framebufferCreationInfo.flags = 0;
+    framebufferCreationInfo.renderPass = _render_pass;
+    framebufferCreationInfo.attachmentCount = 2;
+    framebufferCreationInfo.pAttachments = attachments;
+    framebufferCreationInfo.width = _width;
+    framebufferCreationInfo.height = _height;
+    framebufferCreationInfo.layers = 1;
+
+    uint32_t i = 0;
+    _framebuffers = (VkFramebuffer *)malloc(_swapchain_image_count
+																						* sizeof(VkFramebuffer));
+		assert(_framebuffers != NULL);
+
+		VkResult res = VK_SUCCESS;
+    for (i = 0; i < _swapchain_image_count; i++) {
+        attachments[0] = _buffers[i].view;
+        res = vkCreateFramebuffer(_device, &framebufferCreationInfo, NULL,
+																	&_framebuffers[i]);
+				CHECK(res);
+    }
+		return VK_SUCCESS;
+}
 
 void Engine::run()
 {

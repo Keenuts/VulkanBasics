@@ -112,7 +112,10 @@ class Engine
 		VkSurfaceKHR _surface;
 		VkFormat _image_format;
 		VkColorSpaceKHR _color_space;
+
+		uint32_t _swapchain_image_count;
 		VkSwapchainKHR _swapchain;
+
 		DepthMap _depth;
 		uniformBuffer _uniform_data;
 		VkPipelineLayout _pipeline_layout;
@@ -126,6 +129,7 @@ class Engine
 		uint32_t _current_buffer;
 		VkRenderPass _render_pass;
 		VkPipelineShaderStageCreateInfo _shader_stages[2];
+		VkFramebuffer* _framebuffers;
 
 		//Matrices
 		glm::mat4 _clip_matrix;
@@ -161,6 +165,7 @@ class Engine
 		VkResult initDescriptors();
 		VkResult createRenderPass();
 		VkResult initializeShaders();
+		VkResult InitializeFramebuffers();
 
 		
 
