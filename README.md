@@ -1,4 +1,7 @@
-# Basic hello world using Vulkan
+# [IN PROGRESS] Basic hello world using Vulkan
+
+Please note that this project is not finished yet.
+
 
 ## Setup
 	DO NOT forget to change ./setup_env.sh with your own VulkanSDK path
