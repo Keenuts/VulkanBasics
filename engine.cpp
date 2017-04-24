@@ -789,7 +789,7 @@ VkResult Engine::initializeShaders() {
 	if (loadShader("cube_frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT, fragShader))
 		return VK_INCOMPLETE;
 
-	//TODO: Do this in a more clever way
+	//TODO: Do this in a more clever way to test overhead
 
 	_shader_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	_shader_stages[0].pNext = NULL;
@@ -854,6 +854,76 @@ VkResult Engine::InitializeFramebuffers() {
 				CHECK(res);
     }
 		return VK_SUCCESS;
+}
+
+struct vertex {
+	float x, y, z
+	float r, g, b
+}
+
+struct triangle {
+	struct vertex a, b, c
+}
+
+VkResult Engine::CreateVertexBuffer(uint32_t size, uniformBuffer *buffer) {
+
+	if (buffer == NULL)
+		return VK_INCOMPLETE;
+
+	VkBufferCreateInfo info = {}
+	info.sType = VK_STRUCTURE_TYPE_CREATE_INFO;
+	info.pNext = NULL;
+	info.flags = 0; 
+	info.size = size;
+	info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE; 
+	info.queueFamilyIndexCount = 0;
+	info.pQueueFamilyIndices = NULL;
+
+	VkResult res = vkCreateBuffer(_device, &info, NULL, &(buffer->buff));
+	CHECK(res);
+
+	VkMemoryRequirements requirements;
+	vkGetBufferMemoryRequirements(_device, buffer, &requirements);
+
+	VkMemoryAllocateInfo allocationInfo = {}
+	allocationInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocationInfo.pNext = NULL;
+	allocationInfo.allocationSize = size;
+	allocationInfo.memoryTypeIndex = 0;
+	//TODO: Update memoryTypeIndex
+
+	VkDeviceMemory allocatedMemory;
+	res = vkAllocateMemory(_device, &allocationInfo, NULL, &(buffer->mem));
+	CHECK(res);
+
+	return VK_SUCCESS;
+}
+
+VkResult Engine::MapBuffer(uniformBuffer &buffer, void **ptr) {
+
+}
+
+VkResult Engine::CreateTriangle() {
+	struct triangle tri {
+		.a = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0 },
+		.b = {0.0, 1.0, 0.0, 0.0, 1.0, 0.0 },
+		.c = {1.0, 0.0, 0.0, 0.0, 0.0, 1.0 },
+	}
+
+	VkResult res = CreateVertexBuffer(sizeof(struct triangle), &_vertexBuffer);
+	CHECK(res);
+
+	struct triangle *ptr = NULL;
+	res = MapBuffer(_vertexBuffer, &ptr);
+	CHECK(res);
+
+	memcpy(ptr, &tri, sizeof(struct triangle));
+
+	res = UnmapBuffer(_vertexBuffer, &ptr);
+	CHECK(res);
+
+	return VK_SUCCESS;
 }
 
 void Engine::run()
