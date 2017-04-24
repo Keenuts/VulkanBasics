@@ -130,6 +130,9 @@ class Engine
 		VkRenderPass _render_pass;
 		VkPipelineShaderStageCreateInfo _shader_stages[2];
 		VkFramebuffer* _framebuffers;
+		uniformBuffer _vertexBuffer;
+		VkVertexInputBindingDescription _vtxBinding;
+		VkVertexInputAttributeDescription _vtxAttribute[2];
 
 		//Matrices
 		glm::mat4 _clip_matrix;
@@ -167,7 +170,10 @@ class Engine
 		VkResult initializeShaders();
 		VkResult InitializeFramebuffers();
 
-		
+		VkResult CreateVertexBuffer(uint32_t size, uniformBuffer *buffer);
+		VkResult BeginCommandBuffer();
+		VkResult CreateTriangle();
+
 
 	public:
 		Engine();

@@ -108,6 +108,12 @@ VkResult Engine::init()
 	res = InitializeFramebuffers();
 	assert(res == VK_SUCCESS && "Unable to do initializeFramebuffers()");
 
+	res = BeginCommandBuffer();
+	assert(res == VK_SUCCESS && "Unable to do BeginCommandBuffer()");
+
+	res = CreateTriangle();
+	assert(res == VK_SUCCESS && "Unable to do CreateTriangle()");
+
 	printf("Done: %s\n", vulkanErr(res));
 	
 	return res;
@@ -857,21 +863,21 @@ VkResult Engine::InitializeFramebuffers() {
 }
 
 struct vertex {
-	float x, y, z
-	float r, g, b
-}
+	float x, y, z;
+	float r, g, b;
+};
 
 struct triangle {
-	struct vertex a, b, c
-}
+	struct vertex a, b, c;
+};
 
 VkResult Engine::CreateVertexBuffer(uint32_t size, uniformBuffer *buffer) {
 
 	if (buffer == NULL)
 		return VK_INCOMPLETE;
 
-	VkBufferCreateInfo info = {}
-	info.sType = VK_STRUCTURE_TYPE_CREATE_INFO;
+	VkBufferCreateInfo info = {};
+	info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	info.pNext = NULL;
 	info.flags = 0; 
 	info.size = size;
@@ -884,24 +890,31 @@ VkResult Engine::CreateVertexBuffer(uint32_t size, uniformBuffer *buffer) {
 	CHECK(res);
 
 	VkMemoryRequirements requirements;
-	vkGetBufferMemoryRequirements(_device, buffer, &requirements);
+	vkGetBufferMemoryRequirements(_device, buffer->buff, &requirements);
 
-	VkMemoryAllocateInfo allocationInfo = {}
+	VkMemoryAllocateInfo allocationInfo = {};
 	allocationInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	allocationInfo.pNext = NULL;
 	allocationInfo.allocationSize = size;
 	allocationInfo.memoryTypeIndex = 0;
 	//TODO: Update memoryTypeIndex
 
-	VkDeviceMemory allocatedMemory;
 	res = vkAllocateMemory(_device, &allocationInfo, NULL, &(buffer->mem));
 	CHECK(res);
 
 	return VK_SUCCESS;
 }
 
-VkResult Engine::MapBuffer(uniformBuffer &buffer, void **ptr) {
+VkResult Engine::BeginCommandBuffer() {
+	VkCommandBufferBeginInfo cmdInfo = {};
+	cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	cmdInfo.pNext = NULL;
+	cmdInfo.flags = 0;
+	cmdInfo.pInheritanceInfo = NULL;
+	VkResult res = vkBeginCommandBuffer(_cmd_buffer, &cmdInfo);
+	CHECK(res);
 
+	return res;
 }
 
 VkResult Engine::CreateTriangle() {
@@ -909,22 +922,59 @@ VkResult Engine::CreateTriangle() {
 		.a = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0 },
 		.b = {0.0, 1.0, 0.0, 0.0, 1.0, 0.0 },
 		.c = {1.0, 0.0, 0.0, 0.0, 0.0, 1.0 },
-	}
+	};
 
 	VkResult res = CreateVertexBuffer(sizeof(struct triangle), &_vertexBuffer);
 	CHECK(res);
 
 	struct triangle *ptr = NULL;
-	res = MapBuffer(_vertexBuffer, &ptr);
+	res = vkMapMemory(_device, _vertexBuffer.mem, 0, sizeof(struct triangle), 0, (void**)&ptr);
 	CHECK(res);
-
 	memcpy(ptr, &tri, sizeof(struct triangle));
+	vkUnmapMemory(_device, _vertexBuffer.mem);
 
-	res = UnmapBuffer(_vertexBuffer, &ptr);
+	res = vkBindBufferMemory(_device, _vertexBuffer.buff, _vertexBuffer.mem, 0);
 	CHECK(res);
 
+	_vtxBinding.binding = 0;
+	_vtxBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	_vtxBinding.stride = sizeof(struct vertex);
+	
+	_vtxAttribute[0].location = 0;
+	_vtxAttribute[0].binding = 0;
+	_vtxAttribute[0].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	_vtxAttribute[0].offset = 0;
+	_vtxAttribute[1].location = 0;
+	_vtxAttribute[1].binding = 0;
+	_vtxAttribute[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	_vtxAttribute[1].offset = sizeof(float) * 4; //Stored as RGBA
+
+	const VkDeviceSize offsets[1] = { 0 };
+	
+	VkClearValue clear_values[2];
+	clear_values[0].color = {0.2f, 0.2f, 0.2f, 0.2f };
+	clear_values[1].depthStencil.depth = 1.0f;
+	clear_values[1].depthStencil.stencil = 0;
+
+	VkRenderPassBeginInfo passBeginInfo = {};
+	passBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	passBeginInfo.pNext = NULL;
+	passBeginInfo.renderPass = _render_pass;
+	passBeginInfo.framebuffer = _framebuffers[_current_buffer];
+	passBeginInfo.renderArea.offset.x = 0;
+	passBeginInfo.renderArea.offset.y = 0;
+	passBeginInfo.renderArea.extent.width = _width;
+	passBeginInfo.renderArea.extent.height = _height;
+	passBeginInfo.clearValueCount = 2;
+	passBeginInfo.pClearValues = clear_values;
+	
+	vkCmdBeginRenderPass(_cmd_buffer, &passBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBindVertexBuffers(_cmd_buffer, 0, 1, &_vertexBuffer.buff, offsets);
+	vkCmdEndRenderPass(_cmd_buffer);
+	
 	return VK_SUCCESS;
 }
+
 
 void Engine::run()
 {
