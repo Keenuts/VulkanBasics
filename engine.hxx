@@ -99,6 +99,7 @@ class Engine
 
 		VkPhysicalDevice *_phys_devices;
 		VkPhysicalDeviceMemoryProperties _memory_properties;
+		VkPhysicalDeviceProperties _device_properties;
 		VkDevice _device;
 
 		uint32_t _queue_family_count;

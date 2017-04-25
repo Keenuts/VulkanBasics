@@ -33,6 +33,7 @@
 #define NUM_DESCRIPTORS 1
 #define FENCE_TIMEOUT 100000000
 #define CHECK(r) if ((r) != VK_SUCCESS) { return (r); }
+#define LOG_INFO(msg) printf("[INFO] %s\n", (msg))
 
 Engine::Engine()
 	: _width(500),	
@@ -54,11 +55,6 @@ Engine::Engine()
 	_desc_layout = std::vector<VkDescriptorSetLayout>();
 	_desc_set = std::vector<VkDescriptorSet>();
 	_framebuffers = NULL;
-
-/*
-	_camera = vec3(3, 5, 0);
-	_origin = vec3(0, 0, 0);
-	_up = vec3(0, 1, 0);*/
 }
 
 Engine::~Engine()
@@ -68,58 +64,57 @@ Engine::~Engine()
 VkResult Engine::init()
 {
 	VkResult res;
-	
-	//_window = XcbWindows(_width, _height);
 
 	res = initvk();
-	assert(res == VK_SUCCESS && "Unable to do initvk()");
-
+	CHECK(res);
+	LOG_INFO("Vulkan initialized");
 	res = getDevices();
-	assert(res == VK_SUCCESS && "Unable to do getDevices()");
-		
+	CHECK(res);
 	res = getLogicalDevice();
-	assert(res == VK_SUCCESS && "Unable to do getLogicalDevice()");
+	CHECK(res);
+	LOG_INFO("Vulkan logical device created");
+
+	res = createUniformBuffer();
+	CHECK(res);
+	LOG_INFO("Uniform buffer created");
 
 	res = createCommandPool();
-	assert(res == VK_SUCCESS && "Unable to do createCommandPool()");
-
+	CHECK(res);
 	res = createCommandBuffer();
-	assert(res == VK_SUCCESS && "Unable to do createCommandBuffer()");
+	CHECK(res);
+	LOG_INFO("Command buffer created");
 
 	res = createSwapchain();
-	assert(res == VK_SUCCESS && "Unable to do createSwapchain()");
+	CHECK(res);
+	LOG_INFO("Swapchain created");
 
 	res = createDepthBuffer();
-	assert(res == VK_SUCCESS && "Unable to do createDepthBuffer()");
-	
-	res = createUniformBuffer();
-	assert(res == VK_SUCCESS && "Unable to do createUniformBuffer()");
+	CHECK(res);
+	LOG_INFO("Depth buffer created");
 
 	res = createPipelineLayout();
-	assert(res == VK_SUCCESS && "Unable to do createPipeline()");
+	CHECK(res);
+	LOG_INFO("Pipeline layout created");
 
 	res = createDescriptors();
-	assert(res == VK_SUCCESS && "Unable to do initDescriptors()");
+	CHECK(res);
+	LOG_INFO("Descriptors created");
 
 	res = createRenderPass();
-	assert(res == VK_SUCCESS && "Unable to do createRenderPass()");
+	CHECK(res);
+	LOG_INFO("Render passes created");
 
 	res = createShaders();
-	assert(res == VK_SUCCESS && "Unable to do initializeShaders()");
-	
+	CHECK(res);
 	res = createFramebuffers();
-	assert(res == VK_SUCCESS && "Unable to do initializeFramebuffers()");
-
+	CHECK(res);
 	res = BeginCommandBuffer();
-	assert(res == VK_SUCCESS && "Unable to do BeginCommandBuffer()");
-
+	CHECK(res);
 	res = createTriangle();
-	assert(res == VK_SUCCESS && "Unable to do CreateTriangle()");
-
+	CHECK(res);
 	res = createPipeline();
-	assert(res == VK_SUCCESS && "Unable to do CreatePipeline()");
-
-	printf("Done: %s\n", vulkanErr(res));
+	CHECK(res);
+	LOG_INFO("Initialization done");
 	
 	return res;
 }
@@ -139,15 +134,19 @@ VkResult Engine::initvk()
 	uint32_t ext_nbr = 0;
 	VkResult res = vkEnumerateInstanceExtensionProperties(NULL, &ext_nbr, NULL);
 	assert(res == VK_SUCCESS && "up");
-	std::cout << "Supported instance extensions" << std::endl;
+
 
 	VkExtensionProperties *ext = (VkExtensionProperties*)malloc(
 				sizeof(VkExtensionProperties) * ext_nbr);
 	res = vkEnumerateInstanceExtensionProperties(NULL, &ext_nbr, ext);
 	assert(res == VK_SUCCESS && "vkinit: unable to enumerate extensions.");
 
+#ifdef LOG_VERBOSE
+	printf("\tSupported instance extensions:\n");
 	for (uint32_t i = 0 ; i < ext_nbr ; i++ )
-		std::cout << "\t" << ext[i].extensionName << std::endl;
+		printf("\t\t%s\n", ext[i].extensionName);
+#endif
+
 	free(ext);
 
 	// Loading needed extensions
@@ -176,7 +175,9 @@ VkResult Engine::getDevices()
 {
 	uint32_t gpu_count;
 	VkResult res = vkEnumeratePhysicalDevices(_instance, &gpu_count, NULL);
-	std::cout << "Devices: " << gpu_count << std::endl;
+#ifdef LOG_VERBOSE
+	printf("\tDevices: %u\n", gpu_count);
+#endif
 
 	_phys_devices = new VkPhysicalDevice[gpu_count];
 	res = vkEnumeratePhysicalDevices(_instance, &gpu_count, _phys_devices);
@@ -184,9 +185,14 @@ VkResult Engine::getDevices()
 	for (uint32_t i = 0; i < gpu_count; i++) {
 		VkPhysicalDeviceProperties deviceInfo;
 		vkGetPhysicalDeviceProperties(_phys_devices[i], &deviceInfo);
-		std::cout << "\t[" << i << "] " << deviceInfo.deviceName << std::endl;
+#ifdef LOG_VERBOSE
+		printf("\t\t[%u] %s\n", i, deviceInfo.deviceName);
+#endif
 	}
 
+	vkGetPhysicalDeviceMemoryProperties(_phys_devices[0], &_memory_properties);
+	vkGetPhysicalDeviceProperties(_phys_devices[0], &_device_properties);
+	LOG_INFO(_device_properties.deviceName);
 	return res;
 }
 
@@ -203,20 +209,26 @@ VkResult Engine::getLogicalDevice()
 																					 &_queue_family_count,
 																					 _queue_props);
 
-	std::cout << "Families: " << _queue_family_count << std::endl;
+#ifdef LOG_VERBOSE
+	printf("Families: %u\n", _queue_family_count);
+#endif
 	
 	uint32_t ext_nbr = 0;
-	VkResult res = vkEnumerateDeviceExtensionProperties(_phys_devices[0], NULL, &ext_nbr, NULL);
-	assert(res == VK_SUCCESS && "up");
-	std::cout << "Supported device extensions" << std::endl;
+	VkResult res = vkEnumerateDeviceExtensionProperties(_phys_devices[0], NULL,
+																										  &ext_nbr, NULL);
+	CHECK(res);
 
 	VkExtensionProperties *ext = (VkExtensionProperties*)malloc(
 				sizeof(VkExtensionProperties) * ext_nbr);
 	res = vkEnumerateDeviceExtensionProperties(_phys_devices[0], NULL, &ext_nbr, ext);
-	assert(res == VK_SUCCESS && "getLogicalDevice: unable to enumerate extensions.");
+	CHECK(res);
 	
+#ifdef LOG_VERBOSE
+	printf("\tSupported device extensions\n");
 	for (uint32_t i = 0 ; i < ext_nbr ; i++ )
-		std::cout << "\t" << ext[i].extensionName << std::endl;
+		printf("\t\t- %s\n", ext[i].extensionName);
+#endif
+
 	free(ext);
 
 	_device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
@@ -253,7 +265,8 @@ uint32_t Engine::getQueueFamilyIndex(VkQueueFlagBits bits)
 	for (uint32_t i = 0; i < _queue_family_count ; i++)
 		if (_queue_props[i].queueFlags & bits)
 			return i;
-	assert(1 && "Unable to find a queue type");
+
+	assert(0 && "Unable to find a queue type");
 	return 0;
 }
 
@@ -398,17 +411,23 @@ VkResult Engine::createSwapchain()
 		swapchain_info.imageExtent.height = _height;
 	}
 
-	std::cout << "Setting extents to " << _width 
-						<< "x" << _height << std::endl;
+#ifdef LOG_VERBOSE
+	printf("[INFO] Extents set to %ux%u\n", _width, _height);
+#endif
 
 	// Getting Available surface formats
 	uint32_t nbrAvailableFormats = 0;
-	res = vkGetPhysicalDeviceSurfaceFormatsKHR(_phys_devices[0], _surface, &nbrAvailableFormats, NULL);
-	assert (res == VK_SUCCESS && "Unable to fetch VkSurfaceFormatKHR number");
+	res = vkGetPhysicalDeviceSurfaceFormatsKHR(_phys_devices[0], _surface,
+																						 &nbrAvailableFormats, NULL);
+	CHECK(res);
 
-	VkSurfaceFormatKHR* surfaceFormats = (VkSurfaceFormatKHR*)malloc(nbrAvailableFormats * sizeof(VkSurfaceFormatKHR));
-	res = vkGetPhysicalDeviceSurfaceFormatsKHR(_phys_devices[0], _surface, &nbrAvailableFormats, surfaceFormats);
-	assert (res == VK_SUCCESS && "Unable to fetch VkSurfaceFormatKHR array");
+	VkSurfaceFormatKHR* surfaceFormats =
+			(VkSurfaceFormatKHR*)malloc(nbrAvailableFormats * sizeof(VkSurfaceFormatKHR));
+
+	res = vkGetPhysicalDeviceSurfaceFormatsKHR(_phys_devices[0], _surface,
+																						 &nbrAvailableFormats, surfaceFormats);
+	CHECK(res);
+
 	if (nbrAvailableFormats == 1 && surfaceFormats[0].format == VK_FORMAT_UNDEFINED)
 		swapchain_info.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
 	else {
@@ -558,9 +577,12 @@ VkResult Engine::createDepthBuffer()
 
 VkResult Engine::findMemoryTypeIndex(uint32_t type, VkFlags flags, uint32_t *res) {
 	for (uint32_t i = 0; i < _memory_properties.memoryTypeCount; i++) {
-		if (type & 1) {
+		if ((type & 1) == 1) {
 			if ((_memory_properties.memoryTypes[i].propertyFlags & flags) == flags) {
 				*res = i;
+#ifdef LOG_VERBOSE
+				printf("[DEBUG] Found compatible memory type.\n");
+#endif
 				return VK_SUCCESS;
 			}
 		}
@@ -594,7 +616,7 @@ VkResult Engine::createUniformBuffer() {
 	buf_info.flags = 0;
 
 	VkResult res = vkCreateBuffer(_device, &buf_info, NULL, &_uniform_data.buff);
-	assert(res == VK_SUCCESS);
+	CHECK(res);
 	
 	VkMemoryRequirements mem_reqs;
 	vkGetBufferMemoryRequirements(_device, _uniform_data.buff, &mem_reqs);
@@ -603,6 +625,7 @@ VkResult Engine::createUniformBuffer() {
 	alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	alloc_info.pNext = NULL;
 	alloc_info.memoryTypeIndex = 0;
+	
 	alloc_info.allocationSize = mem_reqs.size;
 	res = findMemoryTypeIndex(mem_reqs.memoryTypeBits,
 														VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
@@ -611,16 +634,16 @@ VkResult Engine::createUniformBuffer() {
 	CHECK(res);
 	
 	res = vkAllocateMemory(_device, &alloc_info, NULL, &(_uniform_data.mem));
-	assert(res == VK_SUCCESS);
+	CHECK(res);
 
 	uint8_t *pData = NULL;
 	res = vkMapMemory(_device, _uniform_data.mem, 0, mem_reqs.size, 0, (void**)&pData);
-	assert(res == VK_SUCCESS);
+	CHECK(res);
 
 	memcpy(pData, &_MVP, sizeof(_MVP));
 	vkUnmapMemory(_device, _uniform_data.mem);
 	res = vkBindBufferMemory(_device, _uniform_data.buff, _uniform_data.mem, 0);
-	assert(res == VK_SUCCESS);
+	CHECK(res);
 
 	_uniform_data.buffer_info.buffer = _uniform_data.buff;
 	_uniform_data.buffer_info.offset = 0;
@@ -819,7 +842,7 @@ VkResult Engine::createShaders() {
 	if (loadShader("cube_frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT, fragShader))
 		return VK_INCOMPLETE;
 
-	//TODO: Do this in a more clever way to test overhead
+	//TODO: Do this in a more clever way
 
 	_shader_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	_shader_stages[0].pNext = NULL;
