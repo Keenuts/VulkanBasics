@@ -133,6 +133,7 @@ class Engine
 		uniformBuffer _vertexBuffer;
 		VkVertexInputBindingDescription _vtxBinding;
 		VkVertexInputAttributeDescription _vtxAttribute[2];
+		VkPipeline _pipeline;
 
 		//Matrices
 		glm::mat4 _clip_matrix;
@@ -164,15 +165,16 @@ class Engine
 		VkResult createSwapchain();
 		VkResult createDepthBuffer();
 		VkResult createUniformBuffer();
-		VkResult createPipeline();
-		VkResult initDescriptors();
+		VkResult createPipelineLayout();
+		VkResult createDescriptors();
 		VkResult createRenderPass();
-		VkResult initializeShaders();
-		VkResult InitializeFramebuffers();
+		VkResult createShaders();
+		VkResult createFramebuffers();
 
-		VkResult CreateVertexBuffer(uint32_t size, uniformBuffer *buffer);
+		VkResult createVertexBuffer(uint32_t size, uniformBuffer *buffer);
 		VkResult BeginCommandBuffer();
-		VkResult CreateTriangle();
+		VkResult createTriangle();
+		VkResult createPipeline();
 
 
 	public:
