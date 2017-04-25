@@ -25,6 +25,7 @@ layout (binding = 1) uniform sampler2D tex;
 
 layout (location = 0) in vec4 texcoord;
 layout (location = 0) out vec4 uFragColor;
+
 void main() {
    uFragColor = texture(tex, texcoord.xy);
 }

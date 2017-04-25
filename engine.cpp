@@ -30,6 +30,8 @@
 #include "engine.hxx"
 #include "window.hxx"
 
+#define NUM_DESCRIPTORS 1
+#define FENCE_TIMEOUT 100000000
 #define CHECK(r) if ((r) != VK_SUCCESS) { return (r); }
 
 Engine::Engine()
@@ -40,8 +42,8 @@ Engine::Engine()
 		_phys_devices(NULL),
 		_device(0),
 		_queue_family_count(0),
-		_present_queue_index(0),
-		_graphic_queue_index(0),
+		_present_queue_family_index(0),
+		_graphic_queue_family_index(0),
 		_queue_props(NULL),
 		_cmd_pool(0),
 		_cmd_buffer(0)
@@ -113,6 +115,9 @@ VkResult Engine::init()
 
 	res = createTriangle();
 	assert(res == VK_SUCCESS && "Unable to do CreateTriangle()");
+
+	res = createPipeline();
+	assert(res == VK_SUCCESS && "Unable to do CreatePipeline()");
 
 	printf("Done: %s\n", vulkanErr(res));
 	
@@ -283,8 +288,8 @@ VkResult Engine::createCommandBuffer()
 
 VkResult Engine::createQueues()
 {
-	_present_queue_index = UINT32_MAX;
-	_graphic_queue_index = UINT32_MAX;
+	_present_queue_family_index = UINT32_MAX;
+	_graphic_queue_family_index = UINT32_MAX;
 
 	VkBool32 *pSupportPresent = (VkBool32*)malloc(sizeof(VkBool32)
 																								* _queue_family_count);
@@ -296,18 +301,23 @@ VkResult Engine::createQueues()
 	for (uint32_t i = 0; i < _queue_family_count ; i++) {
 
 		if (_queue_props[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
-			_graphic_queue_index = i;
+			_graphic_queue_family_index = i;
 
 		if (pSupportPresent[i] == VK_TRUE)
-			_present_queue_index = i;
-		if (_present_queue_index != UINT32_MAX && _graphic_queue_index != UINT32_MAX)
+			_present_queue_family_index = i;
+		if (_present_queue_family_index != UINT32_MAX
+		 && _graphic_queue_family_index != UINT32_MAX)
 			break;
 	}
 
-	if (_present_queue_index == UINT32_MAX || _graphic_queue_index == UINT32_MAX) {
+	if (_present_queue_family_index == UINT32_MAX
+	 || _graphic_queue_family_index == UINT32_MAX) {
 		std::cout << "[Error] No present queue found." << std::endl;
 		return VK_INCOMPLETE;
 	}
+
+	vkGetDeviceQueue(_device, _graphic_queue_family_index, 0, &_graphic_queue);
+	vkGetDeviceQueue(_device, _present_queue_family_index, 0, &_present_queue);
 	return VK_SUCCESS;
 }
 
@@ -478,7 +488,6 @@ VkResult Engine::createSwapchain()
 
 }
 
-
 VkResult Engine::createDepthBuffer()
 {
 	VkImageCreateInfo image_info = {};
@@ -547,8 +556,20 @@ VkResult Engine::createDepthBuffer()
 	return VK_SUCCESS;
 }
 
-VkResult Engine::createUniformBuffer()
-{
+VkResult Engine::findMemoryTypeIndex(uint32_t type, VkFlags flags, uint32_t *res) {
+	for (uint32_t i = 0; i < _memory_properties.memoryTypeCount; i++) {
+		if (type & 1) {
+			if ((_memory_properties.memoryTypes[i].propertyFlags & flags) == flags) {
+				*res = i;
+				return VK_SUCCESS;
+			}
+		}
+		type >>= 1;
+	}
+	return VK_INCOMPLETE;
+}
+
+VkResult Engine::createUniformBuffer() {
 	_projection_matrix = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 100.0f);
 	_view_matrix = glm::lookAt(_camera, _origin, _up);
 	_model_matrix = glm::mat4(1.0f);
@@ -583,6 +604,11 @@ VkResult Engine::createUniformBuffer()
 	alloc_info.pNext = NULL;
 	alloc_info.memoryTypeIndex = 0;
 	alloc_info.allocationSize = mem_reqs.size;
+	res = findMemoryTypeIndex(mem_reqs.memoryTypeBits,
+														VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+															| VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+														&alloc_info.memoryTypeIndex);
+	CHECK(res);
 	
 	res = vkAllocateMemory(_device, &alloc_info, NULL, &(_uniform_data.mem));
 	assert(res == VK_SUCCESS);
@@ -602,8 +628,6 @@ VkResult Engine::createUniformBuffer()
   
 	return VK_SUCCESS;	
 }
-
-#define NUM_DESCRIPTORS 1
 
 VkResult Engine::createPipelineLayout()
 {
@@ -949,29 +973,6 @@ VkResult Engine::createTriangle() {
 	_vtxAttribute[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
 	_vtxAttribute[1].offset = sizeof(float) * 4; //Stored as RGBA
 
-	const VkDeviceSize offsets[1] = { 0 };
-	
-	VkClearValue clear_values[2];
-	clear_values[0].color = {0.2f, 0.2f, 0.2f, 0.2f };
-	clear_values[1].depthStencil.depth = 1.0f;
-	clear_values[1].depthStencil.stencil = 0;
-
-	VkRenderPassBeginInfo passBeginInfo = {};
-	passBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	passBeginInfo.pNext = NULL;
-	passBeginInfo.renderPass = _render_pass;
-	passBeginInfo.framebuffer = _framebuffers[_current_buffer];
-	passBeginInfo.renderArea.offset.x = 0;
-	passBeginInfo.renderArea.offset.y = 0;
-	passBeginInfo.renderArea.extent.width = _width;
-	passBeginInfo.renderArea.extent.height = _height;
-	passBeginInfo.clearValueCount = 2;
-	passBeginInfo.pClearValues = clear_values;
-	
-	vkCmdBeginRenderPass(_cmd_buffer, &passBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-	vkCmdBindVertexBuffers(_cmd_buffer, 0, 1, &_vertexBuffer.buff, offsets);
-	vkCmdEndRenderPass(_cmd_buffer);
-	
 	return VK_SUCCESS;
 }
 
@@ -1064,7 +1065,6 @@ VkResult Engine::createPipeline() {
 	depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 	depth_stencil.depthBoundsTestEnable = VK_FALSE;
 	depth_stencil.stencilTestEnable = VK_FALSE;
-	depth_stencil.front = depth_stencil.back;
 	depth_stencil.back.failOp = VK_STENCIL_OP_KEEP;
 	depth_stencil.back.passOp = VK_STENCIL_OP_KEEP;
 	depth_stencil.back.compareOp = VK_COMPARE_OP_ALWAYS;
@@ -1072,6 +1072,7 @@ VkResult Engine::createPipeline() {
 	depth_stencil.back.reference = 0;
 	depth_stencil.back.depthFailOp = VK_STENCIL_OP_KEEP;
 	depth_stencil.back.writeMask = 0;
+	depth_stencil.front = depth_stencil.back;
 	depth_stencil.minDepthBounds = 0;
 	depth_stencil.maxDepthBounds = 0;
 
@@ -1111,8 +1112,110 @@ VkResult Engine::createPipeline() {
 																	 1, &pipeline, NULL, &_pipeline);
 }
 
-void Engine::run()
+VkResult Engine::run()
 {
+	
+	VkClearValue clear_values[2];
+	clear_values[0].color = {0.2f, 0.2f, 0.2f, 0.2f };
+	clear_values[1].depthStencil.depth = 1.0f;
+	clear_values[1].depthStencil.stencil = 0;
+
+	VkSemaphore semaphore;
+
+	VkSemaphoreCreateInfo semaphore_create_info;
+	semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	semaphore_create_info.pNext = NULL;
+	semaphore_create_info.flags = 0;
+	//Seriously ?
+	
+	VkResult res = vkCreateSemaphore(_device, &semaphore_create_info, NULL,
+																	 &semaphore);
+	CHECK(res);
+
+	res = vkAcquireNextImageKHR(_device, _swapchain, UINT64_MAX, semaphore,
+															VK_NULL_HANDLE, &_current_buffer);
+	CHECK(res);
+
+	VkRenderPassBeginInfo passBeginInfo = {};
+	passBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	passBeginInfo.pNext = NULL;
+	passBeginInfo.renderPass = _render_pass;
+	passBeginInfo.framebuffer = _framebuffers[_current_buffer];
+	passBeginInfo.renderArea.offset.x = 0;
+	passBeginInfo.renderArea.offset.y = 0;
+	passBeginInfo.renderArea.extent.width = _width;
+	passBeginInfo.renderArea.extent.height = _height;
+	passBeginInfo.clearValueCount = 2;
+	passBeginInfo.pClearValues = clear_values;
+	
+	vkCmdBeginRenderPass(_cmd_buffer, &passBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBindPipeline(_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _pipeline);
+	vkCmdBindDescriptorSets(_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+													_pipeline_layout, 0, NUM_DESCRIPTORS,
+													_desc_set.data(), 0, NULL);
+
+	const VkDeviceSize offsets[1] = { 0 };
+	vkCmdBindVertexBuffers(_cmd_buffer, 0, 1, &_vertexBuffer.buff, offsets);
+	
+	_viewport.x = 0;
+	_viewport.y = 0;
+	_viewport.width = _width;
+	_viewport.height = _height;
+	_viewport.minDepth = 0.0f;
+	_viewport.maxDepth = 1.0f;
+	vkCmdSetViewport(_cmd_buffer, 0, 1, &_viewport);
+
+	_scissor.extent.width = _width;
+	_scissor.extent.height = _height;
+	_scissor.offset.x = 0;
+	_scissor.offset.y = 0;
+	vkCmdSetScissor(_cmd_buffer, 0, 1, &_scissor);
+
+	vkCmdDraw(_cmd_buffer, 3, 1, 0, 0);
+	vkCmdEndRenderPass(_cmd_buffer);
+
+	res = vkEndCommandBuffer(_cmd_buffer);
+	CHECK(res);
+	const VkCommandBuffer command_buffers[] = { _cmd_buffer };
+
+	VkFenceCreateInfo fence_info;
+	VkFence draw_fence;
+	fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fence_info.pNext = NULL;
+	fence_info.flags = 0;
+	vkCreateFence(_device, &fence_info, NULL, &draw_fence);
+
+	VkPipelineStageFlags pipe_stage_flags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	VkSubmitInfo submit_info[1] = {};
+	submit_info[0].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submit_info[0].pNext = NULL;
+	submit_info[0].waitSemaphoreCount = 1;
+	submit_info[0].pWaitSemaphores = &semaphore;
+	submit_info[0].pWaitDstStageMask = &pipe_stage_flags;
+	submit_info[0].commandBufferCount = 1;
+	submit_info[0].pCommandBuffers = command_buffers;
+	submit_info[0].signalSemaphoreCount = 0;
+	submit_info[0].pSignalSemaphores = NULL;
+
+	res = vkQueueSubmit(_graphic_queue, 1, submit_info, draw_fence);
+	CHECK(res);
+
+	VkPresentInfoKHR present;
+	present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	present.pNext = NULL;
+	present.swapchainCount = 1;
+	present.pSwapchains = &_swapchain;
+	present.pImageIndices = &_current_buffer;
+	present.pWaitSemaphores = NULL;
+	present.waitSemaphoreCount = 0;
+	present.pResults = NULL;
+
+	do {
+			res = vkWaitForFences(_device, 1, &draw_fence, VK_TRUE, FENCE_TIMEOUT);
+	} while (res == VK_TIMEOUT);
+	CHECK(res);
+
+	return vkQueuePresentKHR(_present_queue, &present);
 }
 
 void Engine::cleanup()

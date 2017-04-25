@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
 	Engine viewer;
 
 	VkResult res = viewer.init();
-	printf("[INFO] Init done: %s", vulkanErr(res));
+	printf("[INFO] Init done: %s\n", vulkanErr(res));
 
 	viewer.run();
 

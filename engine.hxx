@@ -98,13 +98,16 @@ class Engine
 		std::vector<const char *> _device_extension_names;
 
 		VkPhysicalDevice *_phys_devices;
+		VkPhysicalDeviceMemoryProperties _memory_properties;
 		VkDevice _device;
 
 		uint32_t _queue_family_count;
-		uint32_t _present_queue_index;
-		uint32_t _graphic_queue_index;
+		uint32_t _present_queue_family_index;
+		uint32_t _graphic_queue_family_index;
 
 		VkQueueFamilyProperties *_queue_props;
+		VkQueue _graphic_queue;
+		VkQueue _present_queue;
 
 		VkCommandPool _cmd_pool;
 		VkCommandBuffer _cmd_buffer;
@@ -135,6 +138,10 @@ class Engine
 		VkVertexInputAttributeDescription _vtxAttribute[2];
 		VkPipeline _pipeline;
 
+		VkViewport _viewport;
+		VkRect2D _scissor;
+
+
 		//Matrices
 		glm::mat4 _clip_matrix;
 		glm::mat4 _model_matrix;
@@ -157,6 +164,7 @@ class Engine
 		VkResult getLogicalDevice();
 
 		uint32_t getQueueFamilyIndex(VkQueueFlagBits bits);
+		VkResult findMemoryTypeIndex(uint32_t type, VkFlags flags, uint32_t *res);
 		VkResult getSupportedFormats();
 
 		VkResult createQueues();
@@ -182,6 +190,6 @@ class Engine
 		~Engine();
 
 		VkResult init();
-		void run();
+		VkResult run();
 		void cleanup();
 };
