@@ -177,7 +177,19 @@ VkResult Engine::initvk()
 #ifdef LOG_VERBOSE
 	_instance_validation_layers.push_back("VK_LAYER_LUNARG_standard_validation");
 	_instance_validation_layers.push_back("VK_LAYER_LUNARG_swapchain");
+	_instance_validation_layers.push_back("VK_LAYER_LUNARG_monitor");
+	_instance_validation_layers.push_back("VK_LAYER_LUNARG_core_validation");
+	//_instance_validation_layers.push_back("VK_LAYER_LUNARG_api_dump");
+	_instance_validation_layers.push_back("VK_LAYER_LUNARG_screenshot");
+	_instance_validation_layers.push_back("VK_LAYER_LUNARG_object_tracker");
+	_instance_validation_layers.push_back("VK_LAYER_LUNARG_parameter_validation");
+	_instance_validation_layers.push_back("VK_LAYER_RENDERDOC_Capture");
 	_instance_validation_layers.push_back("VK_LAYER_GOOGLE_unique_objects");
+	_instance_validation_layers.push_back("VK_LAYER_GOOGLE_threading");
+
+	printf("Required layers:\n");
+	for (const char* s : _instance_validation_layers)
+		printf("\t\t%s\n", s);
 #endif
 	
 	VkInstanceCreateInfo create_info = {
@@ -1166,7 +1178,7 @@ VkResult Engine::createPipeline() {
 	rasterization_state.depthClampEnable = VK_FALSE;
 	rasterization_state.rasterizerDiscardEnable = VK_FALSE;
 	rasterization_state.polygonMode = VK_POLYGON_MODE_FILL;
-	rasterization_state.cullMode = VK_CULL_MODE_BACK_BIT;
+	rasterization_state.cullMode = VK_CULL_MODE_NONE;
 	rasterization_state.frontFace = VK_FRONT_FACE_CLOCKWISE;
 	rasterization_state.depthBiasEnable = VK_FALSE;
 	rasterization_state.depthBiasConstantFactor = 0;

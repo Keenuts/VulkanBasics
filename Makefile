@@ -15,8 +15,8 @@ debug: CXXFLAGS+=-DLOG_VERBOSE -O0 -Werror
 debug: viewer shaders
 
 shaders:
-	@glslangValidator -V -o cube_vert.spv cube.vert -s
-	@glslangValidator -V -o cube_frag.spv cube.frag -s
+	@glslangValidator -V -o cube_vert.spv cube.vert
+	@glslangValidator -V -o cube_frag.spv cube.frag
 
 viewer: $(OBJ)
 	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
