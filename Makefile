@@ -11,7 +11,7 @@ OBJ=viewer.o engine.o window.o
 main: CXXFLAGS+=-O3
 main: viewer shaders
 
-debug: CXXFLAGS+=-DLOG_VERBOSE -O0
+debug: CXXFLAGS+=-DLOG_VERBOSE -O0 -Werror
 debug: viewer shaders
 
 shaders:
