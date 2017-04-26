@@ -32,7 +32,7 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
 
-
+__attribute__((__used__))
 static const char *vulkanErr(VkResult res)
 {
 	switch (res) {
@@ -119,6 +119,7 @@ class Engine
 
 		uint32_t _swapchain_image_count;
 		VkSwapchainKHR _swapchain;
+		std::vector<VkImage> _images;
 
 		DepthMap _depth;
 		uniformBuffer _uniform_data;
@@ -134,9 +135,9 @@ class Engine
 		VkRenderPass _render_pass;
 		VkPipelineShaderStageCreateInfo _shader_stages[2];
 		VkFramebuffer* _framebuffers;
-		uniformBuffer _vertexBuffer;
-		VkVertexInputBindingDescription _vtxBinding;
-		VkVertexInputAttributeDescription _vtxAttribute[2];
+		uniformBuffer _vertex_buffer;
+		VkVertexInputBindingDescription _vtx_binding;
+		VkVertexInputAttributeDescription _vtx_attribute[2];
 		VkPipeline _pipeline;
 
 		VkViewport _viewport;
@@ -153,9 +154,6 @@ class Engine
 		glm::vec3 _camera;
 		glm::vec3 _origin;
 		glm::vec3 _up;
-
-
-		std::vector<VkImage> _images;
 
 		VkResult initvk();
 		VkResult initConnection();
@@ -184,6 +182,11 @@ class Engine
 		VkResult BeginCommandBuffer();
 		VkResult createTriangle();
 		VkResult createPipeline();
+
+		VkResult setImageLayout(VkCommandBuffer cmdBuffer, VkImage image,
+														VkImageAspectFlags aspects,
+														VkImageLayout old_layout,
+														VkImageLayout new_layout);
 
 
 	public:
