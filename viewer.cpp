@@ -48,6 +48,8 @@ int main(int argc, char** argv) {
 	printf("[INFO] Init done: %s\n", vulkanErr(res));
 
 	viewer.run();
+	for (uint64_t i = 0; i < 0xFFFFFFF; i++)
+	{}
 
 	viewer.cleanup();
 	
