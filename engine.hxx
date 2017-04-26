@@ -136,6 +136,8 @@ class Engine
 		VkPipelineShaderStageCreateInfo _shader_stages[2];
 		VkFramebuffer* _framebuffers;
 		uniformBuffer _vertex_buffer;
+		uint32_t _vertex_count;
+
 		VkVertexInputBindingDescription _vtx_binding;
 		VkVertexInputAttributeDescription _vtx_attribute[2];
 		VkPipeline _pipeline;
@@ -180,7 +182,7 @@ class Engine
 
 		VkResult createVertexBuffer(uint32_t size, uniformBuffer *buffer);
 		VkResult BeginCommandBuffer();
-		VkResult createTriangle();
+		VkResult createVertexBuffers();
 		VkResult createPipeline();
 
 		VkResult setImageLayout(VkCommandBuffer cmdBuffer, VkImage image,

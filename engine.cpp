@@ -75,15 +75,15 @@ VkResult Engine::init()
 	CHECK(res);
 	LOG_INFO("Vulkan logical device created");
 
-	res = createUniformBuffer();
-	CHECK(res);
-	LOG_INFO("Uniform buffer created");
-
 	res = createCommandPool();
 	CHECK(res);
 	res = createCommandBuffer();
 	CHECK(res);
 	LOG_INFO("Command buffer created");
+
+	res = BeginCommandBuffer();
+	CHECK(res);
+	LOG_INFO("Begin command buffer");
 
 	res = createSwapchain();
 	CHECK(res);
@@ -93,13 +93,13 @@ VkResult Engine::init()
 	CHECK(res);
 	LOG_INFO("Depth buffer created");
 
+	res = createUniformBuffer();
+	CHECK(res);
+	LOG_INFO("Uniform buffer created");
+
 	res = createPipelineLayout();
 	CHECK(res);
 	LOG_INFO("Pipeline layout created");
-
-	res = createDescriptors();
-	CHECK(res);
-	LOG_INFO("Descriptors created");
 
 	res = createRenderPass();
 	CHECK(res);
@@ -110,13 +110,17 @@ VkResult Engine::init()
 
 	res = createFramebuffers();
 	CHECK(res);
-	res = BeginCommandBuffer();
+
+	res = createVertexBuffers();
 	CHECK(res);
-	res = createTriangle();
+
+	res = createDescriptors();
 	CHECK(res);
+	LOG_INFO("Descriptors created");
+
 	res = createPipeline();
 	CHECK(res);
-	LOG_INFO("Initialization done");
+	LOG_INFO("Pipeline created");
 	
 	return res;
 }
@@ -310,14 +314,11 @@ VkResult Engine::createCommandPool()
 	VkCommandPoolCreateInfo cmd_pool_info = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
 		.pNext = NULL,
-		.flags = 0,
+		.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
 		.queueFamilyIndex = getQueueFamilyIndex(VK_QUEUE_GRAPHICS_BIT),
 	};
 
-	return vkCreateCommandPool(_device,
-																		 &cmd_pool_info,
-																		 NULL,
-																		 &_cmd_pool);
+	return vkCreateCommandPool(_device, &cmd_pool_info, NULL, &_cmd_pool);
 }
 
 VkResult Engine::createCommandBuffer()
@@ -710,9 +711,10 @@ VkResult Engine::findMemoryTypeIndex(uint32_t type, VkFlags flags, uint32_t *res
 VkResult Engine::createUniformBuffer() {
 	_projection_matrix = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 100.0f);
 	
-	glm::vec3 camera = glm::vec3(-5, 3, -10);
+	//TODO: clean vars from object
+	glm::vec3 camera = glm::vec3(0, 0, 5);
 	glm::vec3 origin = glm::vec3(0, 0, 0);
-	glm::vec3 up = glm::vec3(0, -1, 0);
+	glm::vec3 up = glm::vec3(0, 1, 0);
 
 	_view_matrix = glm::lookAt(camera, origin, up);
 	_model_matrix = glm::mat4(1.0f);
@@ -784,6 +786,7 @@ VkResult Engine::createPipelineLayout()
 	layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 	layout_binding.pImmutableSamplers = NULL;
 
+
 	VkDescriptorSetLayoutCreateInfo descriptor_layout = {};
 	descriptor_layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	descriptor_layout.pNext = NULL;
@@ -792,7 +795,7 @@ VkResult Engine::createPipelineLayout()
 
 	_desc_layout.resize(NUM_DESCRIPTORS);
 	VkResult res = vkCreateDescriptorSetLayout(_device, &descriptor_layout, NULL, _desc_layout.data());
-	assert(res == VK_SUCCESS);
+	CHECK(res);
 	
 	VkPipelineLayoutCreateInfo pipeline_layout = {};
 	pipeline_layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -804,7 +807,7 @@ VkResult Engine::createPipelineLayout()
 	pipeline_layout.pSetLayouts = _desc_layout.data();
 
 	res = vkCreatePipelineLayout(_device, &pipeline_layout, NULL, &_pipeline_layout);
-	assert(res == VK_SUCCESS);
+	CHECK(res);
 
 	return VK_SUCCESS;
 	
@@ -871,7 +874,7 @@ VkResult Engine::createRenderPass()
 	attachments[1].format = _depth.format;
 	attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
 	attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -1011,58 +1014,6 @@ VkResult Engine::createFramebuffers() {
 		return VK_SUCCESS;
 }
 
-struct Vertex {
-    float posX, posY, posZ, posW;  // Position data
-    float r, g, b, a;              // Color
-};
-#define XYZ1(_x_, _y_, _z_) (_x_), (_y_), (_z_), 1.f
-
-
-static const Vertex cube[] = {
-    // red face
-    {XYZ1(-1, -1, 1), XYZ1(1.f, 0.f, 0.f)},
-    {XYZ1(-1, 1, 1), XYZ1(1.f, 0.f, 0.f)},
-    {XYZ1(1, -1, 1), XYZ1(1.f, 0.f, 0.f)},
-    {XYZ1(1, -1, 1), XYZ1(1.f, 0.f, 0.f)},
-    {XYZ1(-1, 1, 1), XYZ1(1.f, 0.f, 0.f)},
-    {XYZ1(1, 1, 1), XYZ1(1.f, 0.f, 0.f)},
-    // green face
-    {XYZ1(-1, -1, -1), XYZ1(0.f, 1.f, 0.f)},
-    {XYZ1(1, -1, -1), XYZ1(0.f, 1.f, 0.f)},
-    {XYZ1(-1, 1, -1), XYZ1(0.f, 1.f, 0.f)},
-    {XYZ1(-1, 1, -1), XYZ1(0.f, 1.f, 0.f)},
-    {XYZ1(1, -1, -1), XYZ1(0.f, 1.f, 0.f)},
-    {XYZ1(1, 1, -1), XYZ1(0.f, 1.f, 0.f)},
-    // blue face
-    {XYZ1(-1, 1, 1), XYZ1(0.f, 0.f, 1.f)},
-    {XYZ1(-1, -1, 1), XYZ1(0.f, 0.f, 1.f)},
-    {XYZ1(-1, 1, -1), XYZ1(0.f, 0.f, 1.f)},
-    {XYZ1(-1, 1, -1), XYZ1(0.f, 0.f, 1.f)},
-    {XYZ1(-1, -1, 1), XYZ1(0.f, 0.f, 1.f)},
-    {XYZ1(-1, -1, -1), XYZ1(0.f, 0.f, 1.f)},
-    // yellow face
-    {XYZ1(1, 1, 1), XYZ1(1.f, 1.f, 0.f)},
-    {XYZ1(1, 1, -1), XYZ1(1.f, 1.f, 0.f)},
-    {XYZ1(1, -1, 1), XYZ1(1.f, 1.f, 0.f)},
-    {XYZ1(1, -1, 1), XYZ1(1.f, 1.f, 0.f)},
-    {XYZ1(1, 1, -1), XYZ1(1.f, 1.f, 0.f)},
-    {XYZ1(1, -1, -1), XYZ1(1.f, 1.f, 0.f)},
-    // magenta face
-    {XYZ1(1, 1, 1), XYZ1(1.f, 0.f, 1.f)},
-    {XYZ1(-1, 1, 1), XYZ1(1.f, 0.f, 1.f)},
-    {XYZ1(1, 1, -1), XYZ1(1.f, 0.f, 1.f)},
-    {XYZ1(1, 1, -1), XYZ1(1.f, 0.f, 1.f)},
-    {XYZ1(-1, 1, 1), XYZ1(1.f, 0.f, 1.f)},
-    {XYZ1(-1, 1, -1), XYZ1(1.f, 0.f, 1.f)},
-    // cyan face
-    {XYZ1(1, -1, 1), XYZ1(0.f, 1.f, 1.f)},
-    {XYZ1(1, -1, -1), XYZ1(0.f, 1.f, 1.f)},
-    {XYZ1(-1, -1, 1), XYZ1(0.f, 1.f, 1.f)},
-    {XYZ1(-1, -1, 1), XYZ1(0.f, 1.f, 1.f)},
-    {XYZ1(1, -1, -1), XYZ1(0.f, 1.f, 1.f)},
-    {XYZ1(-1, -1, -1), XYZ1(0.f, 1.f, 1.f)},
-};
-
 VkResult Engine::createVertexBuffer(uint32_t size, uniformBuffer *buffer) {
 
 	if (buffer == NULL)
@@ -1093,7 +1044,6 @@ VkResult Engine::createVertexBuffer(uint32_t size, uniformBuffer *buffer) {
 														VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
 															| VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 														&allocation_info.memoryTypeIndex);
-	//TODO: Update memoryTypeIndex
 
 	res = vkAllocateMemory(_device, &allocation_info, NULL, &(buffer->mem));
 	CHECK(res);
@@ -1107,21 +1057,35 @@ VkResult Engine::BeginCommandBuffer() {
 	cmdInfo.pNext = NULL;
 	cmdInfo.flags = 0;
 	cmdInfo.pInheritanceInfo = NULL;
-	VkResult res = vkBeginCommandBuffer(_cmd_buffer, &cmdInfo);
-	CHECK(res);
 
-	return res;
+	return vkBeginCommandBuffer(_cmd_buffer, &cmdInfo);
 }
 
-VkResult Engine::createTriangle() {
+typedef struct _vertex {
+	float x, y, z, w;
+	float r, g, b, a;
+} Vertex;
 
-	VkResult res = createVertexBuffer(sizeof(cube), &_vertex_buffer);
+#define V3(a, b, c) (a), (b), (c), 1.0f
+#define V4(a, b, c, d) (a), (b), (c), (d)
+const Vertex triangle[3] = {
+	{ V3(-1, 0, 0), V3(1, 0, 0) },
+	{ V3(0, 1, 0), V3(0, 1, 0) },
+	{ V3(1, 0, 0), V3(0, 0, 1) }
+};
+
+VkResult Engine::createVertexBuffers() {
+
+	uint32_t buffer_size = sizeof(Vertex) * 3;
+	_vertex_count = 3;
+
+	VkResult res = createVertexBuffer(buffer_size , &_vertex_buffer);
 	CHECK(res);
 
 	void *ptr = NULL;
-	res = vkMapMemory(_device, _vertex_buffer.mem, 0, sizeof(cube), 0, &ptr);
+	res = vkMapMemory(_device, _vertex_buffer.mem, 0, buffer_size, 0, &ptr);
 	CHECK(res);
-	memcpy(ptr, cube, sizeof(cube));
+	memcpy(ptr, triangle, buffer_size);
 	vkUnmapMemory(_device, _vertex_buffer.mem);
 
 	res = vkBindBufferMemory(_device, _vertex_buffer.buff, _vertex_buffer.mem, 0);
@@ -1129,13 +1093,13 @@ VkResult Engine::createTriangle() {
 
 	_vtx_binding.binding = 0;
 	_vtx_binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-	_vtx_binding.stride = sizeof(cube[0]);
+	_vtx_binding.stride = sizeof(Vertex);
 	
 	_vtx_attribute[0].location = 0;
 	_vtx_attribute[0].binding = 0;
 	_vtx_attribute[0].format = VK_FORMAT_R32G32B32A32_SFLOAT;
 	_vtx_attribute[0].offset = 0;
-	_vtx_attribute[1].location = 0;
+	_vtx_attribute[1].location = 1;
 	_vtx_attribute[1].binding = 0;
 	_vtx_attribute[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
 	_vtx_attribute[1].offset = 16; //Stored as RGBA
@@ -1342,7 +1306,7 @@ VkResult Engine::run()
 	_scissor.offset.y = 0;
 	vkCmdSetScissor(_cmd_buffer, 0, 1, &_scissor);
 
-	vkCmdDraw(_cmd_buffer, 12 * 3, 1, 0, 0);
+	vkCmdDraw(_cmd_buffer, _vertex_count, 1, 0, 0);
 	vkCmdEndRenderPass(_cmd_buffer);
 
 	res = vkEndCommandBuffer(_cmd_buffer);

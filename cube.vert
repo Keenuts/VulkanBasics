@@ -7,8 +7,8 @@ layout (std140, binding = 0) uniform _matrices {
 } matrices;
 
 layout (location = 0) in vec4 pos;
-layout (location = 1) in vec4 in_color;
-layout (location = 0) out vec4 out_color;
+layout (location = 1) in vec4 color_in;
+layout (location = 0) out vec4 color_out;
 
 out gl_PerVertex {
         vec4 gl_Position;
@@ -16,6 +16,6 @@ out gl_PerVertex {
 
 void main() 
 {
-	out_color = in_color;
+	color_out = color_in;
 	gl_Position = matrices.MVP * pos;
 }

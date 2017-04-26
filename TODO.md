@@ -1,9 +1,5 @@
 # Basic Vulkan setup
-- Shader compilation + support
-- Framebuffers
-- vertex buffers
-- Create the actual pipeline
-- Finaly draw a cube
+- Solve ratio problems
 
 # Extended features
 - Load a simple obj model
