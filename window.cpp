@@ -40,7 +40,7 @@ VkResult XcbWindow::initConnection()
 	int scr = 0;
 	_connection = xcb_connect(NULL, &scr);
 	if (!_connection || xcb_connection_has_error(_connection)) {
-		std::cout << "Unable to connect to the X server." << std::endl;
+		fprintf(stderr, "[ERROR] %s\n", "Unable to connect to the X server.");
 		return VK_INCOMPLETE;
 	}
 
@@ -59,7 +59,7 @@ void XcbWindow::createWindow(uint32_t height, uint32_t width)
 	uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
 	uint32_t value_list[32] = { _screen->black_pixel, 0 };
 
-	std::cout << "Creating a window " << width << "x" << height << std::endl;
+	printf("[INFO] Creating a window %ux%u\n", width, height);
 
 	xcb_create_window(_connection,
 										XCB_COPY_FROM_PARENT,
