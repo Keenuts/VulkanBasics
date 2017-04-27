@@ -153,6 +153,73 @@ bool vulkan_initialize_devices(vulkan_info *info) {
 	return res;
 }
 
+static uint32_t get_queue_family_index(VkQueueFlagBits bits, uint32_t count
+																			 VkQueueFamilyProperties *props) {
+	for (uint32_t i = 0; i < count ; i++) {
+		if (props[i].queueFlags & bits)
+			return i;
+	printf("[ERROR] Unable to queue type: %u\n", bits);
+	return -1;
+
+bool get_logical_device(vulkan_info_t *info)
+{
+	uint32_t queue_family_count;
+	vkGetPhysicalDeviceQueueFamilyProperties(info->physical_device,
+																					 &queue_family_count, NULL);
+
+	VkQueueFamilyProperties *queue_props = new VkQueueFamilyProperties[queue_family_count];
+	CHECK(queue_props != NULL);
+
+	vkGetPhysicalDeviceQueueFamilyProperties(info->physical_device,
+																					 &queue_family_count,
+																					 queue_props);
+
+#ifdef LOG_VERBOSE
+	uint32_t ext_nbr = 0;
+	CHECK_VK(vkEnumerateDeviceExtensionProperties(info->physical_device, NULL,
+																										  &ext_nbr, NULL));
+	VkExtensionProperties *ext = new VkExtensionProperties[ext_nbr];
+	CHECK_VK(vkEnumerateDeviceExtensionProperties(info->physical_device, NULL, &ext_nbr, ext));
+	
+	printf("[DEBUG] Supported device extensions\n");
+	for (uint32_t i = 0 ; i < ext_nbr ; i++ )
+		printf("[DEBUG] \t\t- %s\n", ext[i].extensionName);
+	delete ext;
+#endif
+
+	std::vector<const char*> device_extension_names = std::vector<const char*>();
+	device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+
+
+	uint32_t queue_id = get_queue_family_index(VK_QUEUE_GRAPHIC_BIT);
+	CHECK(queue_id != -1);
+
+	float queue_priorities[1] = { 0.0f };
+	VkDeviceQueueCreateInfo queue_info {
+		.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+		.pNext = NULL,
+		.flags = 0,
+		.queueFamilyIndex = queue_id,
+		.queueCount = 1,
+		.pQueuePriorities = queue_priorities,
+	};
+
+	VkDeviceCreateInfo create_info = {
+		.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+		.pNext = NULL,
+		.flags = 0,
+		.queueCreateInfoCount = 1,
+		.pQueueCreateInfos = &queue_info,
+		.enabledLayerCount = 0,
+		.ppEnabledLayerNames = NULL,
+		.enabledExtensionCount = static_cast<uint32_t>(device_extension_names.size()),
+		.ppEnabledExtensionNames = device_extension_names.data(),
+		.pEnabledFeatures = NULL,
+	};
+
+	CHECK_VK(vkCreateDevice(_phys_devices[0], &create_info, NULL, &_device));
+	return true;
+}
 
 bool vulkan_initialize(vulkan_info_t *info) {
 	LOG("Initializing Vulkan...");
