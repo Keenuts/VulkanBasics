@@ -1,6 +1,6 @@
 LIBS=x11-xcb
 
-CXXFLAGS=-Wall -g -std=c++14 `pkg-config --cflags $(LIBS)`
+CXXFLAGS=-Wall -g -std=c++17 `pkg-config --cflags $(LIBS)`
 
 CPPFLAGS= -I $(VULKAN_SDK)/include
 

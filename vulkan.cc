@@ -32,13 +32,12 @@
 #include "vulkan.hh"
 
 #define LOG(msg) printf("[INFO] %s\n", (msg))
-#define CHECK(cond) if (!(cond)) { return false; }
 
 #ifdef LOG_VERBOSE
 #define CHECK_VK(res) 																			\
 	if (res != VK_SUCCESS) { 																	\
 		printf("[DEBUG] Vulkan failed : %s\n", vktostring(res));\
-		return false;																						\
+		return res;																						\
 	}
 #else
 
@@ -47,7 +46,7 @@
 		return false;
 #endif
 
-bool vulkan_startup(vulkan_info_t *info) {
+static VkResult vulkan_startup(vulkan_info_t *info) {
 	VkApplicationInfo application_info = {
 		.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
 		.pNext = NULL,
@@ -124,16 +123,17 @@ bool vulkan_startup(vulkan_info_t *info) {
 
 	CHECK_VK(vkCreateInstance(&create_info, NULL, &info->instance));
 	LOG("Instance created");
-	return true;
+	return VK_SUCCESS;
 }
 
-bool vulkan_initialize_devices(vulkan_info *info) {
+static VkResult vulkan_initialize_devices(vulkan_info *info) {
 	uint32_t gpu_count;
-	VkResult res = vkEnumeratePhysicalDevices(info->instance, &gpu_count, NULL);
-	CHECK(gpu_count > 0);
+	CHECK_VK(vkEnumeratePhysicalDevices(info->instance, &gpu_count, NULL));
+	if (gpu_count == 0)
+		return VK_INCOMPLETE;
 
 	VkPhysicalDevice *phys_devices = new VkPhysicalDevice[gpu_count];
-	res = vkEnumeratePhysicalDevices(info->instance, &gpu_count, phys_devices);
+	CHECK_VK(vkEnumeratePhysicalDevices(info->instance, &gpu_count, phys_devices));
 	info->physical_device = phys_devices[0];
 
 #ifdef LOG_VERBOSE
@@ -150,25 +150,41 @@ bool vulkan_initialize_devices(vulkan_info *info) {
 	vkGetPhysicalDeviceMemoryProperties(info->physical_device, &info->memory_properties);
 	vkGetPhysicalDeviceProperties(info->physical_device, &info->device_properties);
 	printf("[INFO] Selecting device: %s\n", info->device_properties.deviceName); 
-	return res;
+	return VK_SUCCESS;
 }
 
-static uint32_t get_queue_family_index(VkQueueFlagBits bits, uint32_t count
+static uint32_t get_queue_family_index(VkQueueFlagBits bits, uint32_t count,
 																			 VkQueueFamilyProperties *props) {
 	for (uint32_t i = 0; i < count ; i++) {
 		if (props[i].queueFlags & bits)
 			return i;
-	printf("[ERROR] Unable to queue type: %u\n", bits);
-	return -1;
+	}
 
-bool get_logical_device(vulkan_info_t *info)
-{
+	printf("[ERROR] Unable to queue type: %u\n", bits);
+	return (uint32_t)-1;
+}
+
+static VkResult vulkan_create_command_pool(vulkan_info_t *info, uint32_t graphic_queue) {
+	VkCommandPoolCreateInfo cmd_pool_info = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+		.pNext = NULL,
+		.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+		.queueFamilyIndex = graphic_queue,
+	};
+
+	CHECK_VK(vkCreateCommandPool(info->device, &cmd_pool_info, NULL, &info->cmd_pool));
+	LOG("Command pool created.");
+	return VK_SUCCESS;
+}
+
+static VkResult vulkan_create_logical_device(vulkan_info_t *info) {
 	uint32_t queue_family_count;
 	vkGetPhysicalDeviceQueueFamilyProperties(info->physical_device,
 																					 &queue_family_count, NULL);
 
 	VkQueueFamilyProperties *queue_props = new VkQueueFamilyProperties[queue_family_count];
-	CHECK(queue_props != NULL);
+	if (queue_props == NULL)
+		return VK_ERROR_OUT_OF_HOST_MEMORY;
 
 	vkGetPhysicalDeviceQueueFamilyProperties(info->physical_device,
 																					 &queue_family_count,
@@ -179,7 +195,8 @@ bool get_logical_device(vulkan_info_t *info)
 	CHECK_VK(vkEnumerateDeviceExtensionProperties(info->physical_device, NULL,
 																										  &ext_nbr, NULL));
 	VkExtensionProperties *ext = new VkExtensionProperties[ext_nbr];
-	CHECK_VK(vkEnumerateDeviceExtensionProperties(info->physical_device, NULL, &ext_nbr, ext));
+	CHECK_VK(vkEnumerateDeviceExtensionProperties(info->physical_device, NULL,
+																								&ext_nbr, ext));
 	
 	printf("[DEBUG] Supported device extensions\n");
 	for (uint32_t i = 0 ; i < ext_nbr ; i++ )
@@ -191,8 +208,10 @@ bool get_logical_device(vulkan_info_t *info)
 	device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 
 
-	uint32_t queue_id = get_queue_family_index(VK_QUEUE_GRAPHIC_BIT);
-	CHECK(queue_id != -1);
+	uint32_t queue_id = get_queue_family_index(VK_QUEUE_GRAPHICS_BIT,
+												queue_family_count, queue_props);
+	if (queue_id == (uint32_t)-1)
+		return VK_INCOMPLETE;
 
 	float queue_priorities[1] = { 0.0f };
 	VkDeviceQueueCreateInfo queue_info {
@@ -217,16 +236,17 @@ bool get_logical_device(vulkan_info_t *info)
 		.pEnabledFeatures = NULL,
 	};
 
-	CHECK_VK(vkCreateDevice(_phys_devices[0], &create_info, NULL, &_device));
-	return true;
+	CHECK_VK(vkCreateDevice(info->physical_device, &create_info, NULL, &info->device));
+	return vulkan_create_command_pool(info, queue_id);
 }
 
-bool vulkan_initialize(vulkan_info_t *info) {
+VkResult vulkan_initialize(vulkan_info_t *info) {
 	LOG("Initializing Vulkan...");
 	
-	CHECK(vulkan_startup(info));
-	CHECK(vulkan_initialize_devices(info));
+	CHECK_VK(vulkan_startup(info));
+	CHECK_VK(vulkan_initialize_devices(info));
+	CHECK_VK(vulkan_create_logical_device(info));
 
 	LOG("Vulkan initialized.");
-	return true;
+	return VK_SUCCESS;
 }

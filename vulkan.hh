@@ -29,6 +29,8 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
 
+#include "types.hh"
+
 typedef struct swapchain_buffer {
 	VkImage image;
 	VkImageView view;
@@ -93,26 +95,6 @@ typedef struct vulkan_info {
 	VkRect2D scissor;
 } vulkan_info_t;
 
-typedef struct scene_info {
-	glm::mat4 clip;
-	glm::mat4 model;
-	glm::mat4 projection;
-
-	glm::vec3 camera;
-	glm::vec3 origin;
-	glm::vec3 up;
-} scene_info_t;
-
-typedef struct object_info {
-	glm::mat4 model;
-	struct vertex *vertices;
-} object_info_t;
-
-typedef struct vertex {
-	float x, y, z, w;
-	float r, g, b, a;
-} vertex_t;
-
 __attribute__((__used__))
 static const char *vktostring(VkResult res)
 {
@@ -148,4 +130,4 @@ static const char *vktostring(VkResult res)
 #undef CASE_STR
 }
 
-bool vulkan_initialize(vulkan_info_t *info);
+VkResult vulkan_initialize(vulkan_info_t *info);
