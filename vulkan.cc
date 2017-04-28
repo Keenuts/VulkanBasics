@@ -47,6 +47,8 @@
 #endif
 
 static VkResult vulkan_startup(vulkan_info_t *info) {
+	//Initialize info.instance
+	
 	VkApplicationInfo application_info = {
 		.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
 		.pNext = NULL,
@@ -127,6 +129,10 @@ static VkResult vulkan_startup(vulkan_info_t *info) {
 }
 
 static VkResult vulkan_initialize_devices(vulkan_info *info) {
+	//Initialize info.physical_device
+	//					 info.memory_properties
+	//					 info.device_properties
+
 	uint32_t gpu_count;
 	CHECK_VK(vkEnumeratePhysicalDevices(info->instance, &gpu_count, NULL));
 	if (gpu_count == 0)
@@ -165,6 +171,8 @@ static uint32_t get_queue_family_index(VkQueueFlagBits bits, uint32_t count,
 }
 
 static VkResult vulkan_create_command_pool(vulkan_info_t *info, uint32_t graphic_queue) {
+	//Initialize info.cmd_pool
+
 	VkCommandPoolCreateInfo cmd_pool_info = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
 		.pNext = NULL,
@@ -178,6 +186,8 @@ static VkResult vulkan_create_command_pool(vulkan_info_t *info, uint32_t graphic
 }
 
 static VkResult vulkan_create_logical_device(vulkan_info_t *info) {
+	//initialize info.device
+	
 	uint32_t queue_family_count;
 	vkGetPhysicalDeviceQueueFamilyProperties(info->physical_device,
 																					 &queue_family_count, NULL);
@@ -246,6 +256,7 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	CHECK_VK(vulkan_startup(info));
 	CHECK_VK(vulkan_initialize_devices(info));
 	CHECK_VK(vulkan_create_logical_device(info));
+	//CHECK_VK(vulkan_create_queues(info));
 
 	LOG("Vulkan initialized.");
 	return VK_SUCCESS;

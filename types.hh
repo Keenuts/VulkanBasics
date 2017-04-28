@@ -24,7 +24,7 @@ typedef struct v3 : v2 {
 typedef struct vertex {
 	v3_t pos;
 	v3_t nrm;
-	v2_t uvw;
+	v2_t uv;
 } vertex_t;
 
 typedef struct model {

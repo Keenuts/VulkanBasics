@@ -20,7 +20,11 @@
 int main(int argc, char** argv) {
 	vulkan_info_t vulkan_info;
 
-	load_model("mesh.obj");
+	model_t model = { 0 };
+	if (!load_model("mesh.obj", &model)) {
+		printf("[ERROR] Unable to load a model\n");
+		return 1;
+	}
 
 	VkResult res = vulkan_initialize(&vulkan_info);
 	if (res != VK_SUCCESS) {

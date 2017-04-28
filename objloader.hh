@@ -2,4 +2,4 @@
 
 #include "types.hh"
 
-bool load_model(const char* path);
+bool load_model(const char* path, model_t *model);

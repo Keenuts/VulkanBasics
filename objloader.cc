@@ -14,13 +14,17 @@ typedef struct face {
 } face_t;
 
 struct raw_data {
+	std::string name;
 	std::vector<v3_t> vtx;
 	std::vector<v3_t> nrm;
 	std::vector<v2_t> uv;
-	std::vector<face_t> face;
+	std::vector<struct face> face;
 };
 
 bool parse_obj(const char* path, struct raw_data* data) {
+	if (!data)
+		return false;
+
 	std::string name = "Default";
 	std::ifstream input;
 	input.open(path);
@@ -28,7 +32,7 @@ bool parse_obj(const char* path, struct raw_data* data) {
 	std::vector<v3_t> vtx = std::vector<v3_t>();
 	std::vector<v3_t> nrm = std::vector<v3_t>();
 	std::vector<v2_t> uv = std::vector<v2_t>();
-	std::vector<face_t> face = std::vector<face_t>();
+	std::vector<struct face> face = std::vector<struct face>();
 
 	bool reading = true;
 
@@ -58,7 +62,7 @@ bool parse_obj(const char* path, struct raw_data* data) {
 			nrm.push_back(n);
 		}
 		else if (!strcmp(head.data(), "f")) {
-			face_t f;
+			struct face f;
 			for (uint32_t i = 0; i < 3; i++) {
 				input >> f.vtx[i];
 				input.get();
@@ -69,16 +73,64 @@ bool parse_obj(const char* path, struct raw_data* data) {
 			face.push_back(f);
 		}
 		else if (head.size() < 1)
-			return false;
-		else
 			break;
+		else {
+			printf("[ERROR] Invalid token %s\n", head.data());
+			return false;
+		}
 	}
+
+	data->name = name;
+	data->vtx = vtx;
+	data->nrm = nrm;
+	data->uv = uv;
+	data->face = face;
 
 	printf("[INFO] Loading a mesh: %s\n", name.data());
 	printf("[INFO] \t\t%zu vtx, %zu tris\n", vtx.size(), face.size());
 	return true;
 }
 
-bool load_model(const char* data) {
+bool load_model(const char* path, model_t *model) {
+	struct raw_data raw;
+	
+	if (!model)
+		return false;
+	if (!parse_obj(path, &raw))
+		return false;
+	
+	model->count = raw.face.size() * 3;
+	model->vertices = new vertex_t[model->count];
+	
+	uint32_t index = 0;
+	for (face_t f : raw.face) {
+		for (uint32_t i = 0; i < 3; i++) {
+			vertex_t v;
+
+			if (f.vtx[i] <= 0 || f.vtx[i] > raw.vtx.size()) {
+				printf("[ERROR] Invalid vtx index: %u\n", f.vtx[i]);
+				goto ERROR;
+			}
+			if (f.nrm[i] <= 0 || f.nrm[i] > raw.nrm.size()) {
+				printf("[ERROR] Invalid nrm index: %u\n", f.vtx[i]);
+				goto ERROR;
+			}
+			if (f.uv[i] <= 0 || f.uv[i] > raw.uv.size()) {
+				printf("[ERROR] Invalid uv index: %u\n", f.vtx[i]);
+				goto ERROR;
+			}
+
+			v.pos = raw.vtx[f.vtx[i] - 1];
+			v.nrm = raw.nrm[f.nrm[i] - 1];
+			v.uv = raw.uv[f.uv[i] - 1];
+			model->vertices[index++] = v;
+		}
+	}
+
 	return true;
+
+ERROR:
+	printf("[ERROR] Mesh %s: invalid vtx index\n", raw.name.data());
+	delete model->vertices;
+	return false;
 }
