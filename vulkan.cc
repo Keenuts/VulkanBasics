@@ -280,20 +280,108 @@ static VkResult vulkan_create_queues(vulkan_info_t *info, queue_creation_info_t 
 	return VK_SUCCESS;
 }
 
+VkResult vulkan_create_KHR_surface(vulkan_info_t *info) {
+	VkXcbSurfaceCreateInfoKHR create_info = {
+		.sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
+		.pNext = NULL,
+		.flags = 0,
+		.connection = info->window.connection,
+		.window = info->window.window
+	};
+
+	return vkCreateXcbSurfaceKHR(info->instance, &create_info, NULL, &info->surface);
+}
+
+#define VK_CREATE_GET_ARRAY_INFO(FuncName, VkFunc, VkType) 										 \
+VkResult FuncName(vulkan_info_t *info, VkType **s, uint32_t *nbr) {						 \
+	*nbr = 0;																																		 \
+	VkResult res = VkFunc(info->physical_device, info->surface, nbr, NULL);			 \
+	if (res != VK_SUCCESS)																											 \
+		return res;																																 \
+	if (*nbr <= 0)																															 \
+		return VK_INCOMPLETE;																											 \
+	*s = new VkType[*nbr];																											 \
+	if (*s == NULL)																															 \
+		return VK_INCOMPLETE;																											 \
+	res = VkFunc(info->physical_device, info->surface, nbr, *s);								 \
+	if (res != VK_SUCCESS) {																										 \
+		delete *s;																																 \
+		return res;																																 \
+	}																																						 \
+	return VK_SUCCESS;																													 \
+}
+
+VK_CREATE_GET_ARRAY_INFO(vulkan_get_supported_formats, vkGetPhysicalDeviceSurfaceFormatsKHR, VkSurfaceFormatKHR)
+VK_CREATE_GET_ARRAY_INFO(vulkan_get_supported_modes, vkGetPhysicalDeviceSurfacePresentModesKHR, VkPresentModeKHR)
+
+static uint32_t clamp(uint32_t value, uint32_t min, uint32_t max) {
+	return value < min ? min : (value > max ? max : value);
+}
+
+VkResult vulkan_set_extents(vulkan_info_t *info) {
+  VkSurfaceCapabilitiesKHR capabilities;
+	CHECK_VK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(info->physical_device,
+																								info->surface, &capabilities));
+	float ratio = (float)info->height / (float)info->width;
+	info->width = clamp(info->width, capabilities.minImageExtent.width,
+								 capabilities.maxImageExtent.width);
+	info->height = (float)(info->width * ratio);
+	info->height = clamp(info->height, capabilities.minImageExtent.height,
+								 capabilities.maxImageExtent.height);
+
+#ifdef LOG_VERBOSE
+	printf("[DEBUG] Min extents are %ux%u\n",
+				 capabilities.minImageExtent.width, capabilities.minImageExtent.height);
+	printf("[DEBUG] Max extents are %ux%u\n",
+				 capabilities.maxImageExtent.width, capabilities.maxImageExtent.height);
+#endif
+	printf("[INFO] Extents set to %ux%u\n", info->width, info->height);
+
+	return VK_SUCCESS;
+}
+
+VkResult vulkan_create_swapchain(vulkan_info_t *info) {
+	//Getting supported formats
+	//And the color space
+	
+	uint32_t nbr_format;
+	uint32_t nbr_modes;
+	VkSurfaceFormatKHR *supported_formats = NULL;
+	VkPresentModeKHR *supported_modes = NULL;
+
+	VkResult res = vulkan_get_supported_formats(info, &supported_formats, &nbr_format));
+	if (res != VK_SUCCESS)
+		goto ERROR_FORMATS;
+	res = vulkan_get_supported_modes(info, &supported_modes, &nbr_modes);
+	if (res != VK_SUCCESS)
+		goto ERROR_PRESENT;
+
+	info->color_space = supported_formats[0].colorSpace;
+
+
+	delete supported_modes;
+ERROR_PRESENT:
+	delete supported_formats;
+ERROR_FORMATS:
+	return res;
+}
+
 
 
 VkResult vulkan_initialize(vulkan_info_t *info) {
 	LOG("Initializing Vulkan...");
 	
+	queue_creation_info_t queue_info = { 0 };
+
 	if (!create_window(&info->window, info->width, info->height))
 		return VK_INCOMPLETE;
+
 	CHECK_VK(vulkan_startup(info));
 	CHECK_VK(vulkan_initialize_devices(info));
-
-	queue_creation_info_t queue_info = { 0 };
 	CHECK_VK(vulkan_create_device(info, &queue_info));
-
+	CHECK_VK(vulkan_create_KHR_surface(info));
 	CHECK_VK(vulkan_create_queues(info, &queue_info));
+	CHECK_VK(vulkan_create_swapchain(info));
 	
 	delete queue_info.family_props;
 

@@ -18,7 +18,9 @@
 
 
 int main(int argc, char** argv) {
-	vulkan_info_t vulkan_info;
+	vulkan_info_t vulkan_info = { 0 };
+	vulkan_info.width = 500;
+	vulkan_info.height = 500;
 
 	model_t model = { 0 };
 	if (!load_model("mesh.obj", &model)) {
