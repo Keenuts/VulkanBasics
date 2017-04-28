@@ -4,3 +4,4 @@ tags
 .gdbinit
 *.swp
 *.spv
+setup_env.sh
