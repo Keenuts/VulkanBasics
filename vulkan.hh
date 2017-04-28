@@ -30,27 +30,36 @@
 #include <glm/vec4.hpp>
 
 #include "types.hh"
+#include "window.hh"
 
-typedef struct swapchain_buffer {
+struct swapchain_buffer_t {
 	VkImage image;
 	VkImageView view;
 	VkFramebuffer framebuffer;
-} swapchain_buffer_t;
+};
 
-typedef struct data_buffer {
+struct data_buffer_t {
 	VkDescriptorBufferInfo descriptor;
 	VkDeviceMemory memory;
 	VkBuffer buffer;
-} data_buffer_t;
+};
 
-typedef struct image_buffer {
+struct image_buffer_t {
 	VkFormat format;
 	VkImage image;
 	VkDeviceMemory memory;
 	VkImageView view;
-} image_buffer_t;
+};
 
-typedef struct vulkan_info {
+struct queue_creation_info_t {
+	uint32_t count;
+	uint32_t present_family_index;
+	uint32_t graphic_family_index;
+
+	VkQueueFamilyProperties *family_props;
+};
+
+struct vulkan_info_t {
 	uint32_t width;
 	uint32_t height;
 	
@@ -59,6 +68,9 @@ typedef struct vulkan_info {
 	VkPhysicalDeviceMemoryProperties memory_properties;
 	VkPhysicalDeviceProperties device_properties;
 	VkDevice device;
+
+	window_t window;
+	VkSurfaceKHR surface;
 	
 	VkQueue graphic_queue;
 	VkQueue present_queue;
@@ -93,7 +105,7 @@ typedef struct vulkan_info {
 	VkVertexInputBindingDescription vertex_binding;
 	VkVertexInputAttributeDescription *vertex_attribute;
 	VkRect2D scissor;
-} vulkan_info_t;
+};
 
 __attribute__((__used__))
 static const char *vktostring(VkResult res)

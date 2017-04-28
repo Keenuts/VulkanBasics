@@ -16,20 +16,17 @@
 #include <unistd.h>
 
 
-#include <glm/mat4x4.hpp>
-#include <glm/vec4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-
-#include <vulkan/vulkan.hpp>
-#include <vulkan/vk_sdk_platform.h>
-
-#include "window.hxx"
-
-#include <xcb/xcb.h>
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
+#include <vulkan/vk_sdk_platform.h>
+#include <vulkan/vulkan.hpp>
+#include <xcb/xcb.h>
 
+
+#include "window.hh"
 #include "vulkan.hh"
+
 
 #define LOG(msg) printf("[INFO] %s\n", (msg))
 
@@ -43,7 +40,7 @@
 
 #define CHECK_VK(res) 																			\
 	if (res != VK_SUCCESS)   																	\
-		return false;
+		return res;
 #endif
 
 static VkResult vulkan_startup(vulkan_info_t *info) {
@@ -128,7 +125,7 @@ static VkResult vulkan_startup(vulkan_info_t *info) {
 	return VK_SUCCESS;
 }
 
-static VkResult vulkan_initialize_devices(vulkan_info *info) {
+static VkResult vulkan_initialize_devices(vulkan_info_t *info) {
 	//Initialize info.physical_device
 	//					 info.memory_properties
 	//					 info.device_properties
@@ -185,20 +182,19 @@ static VkResult vulkan_create_command_pool(vulkan_info_t *info, uint32_t graphic
 	return VK_SUCCESS;
 }
 
-static VkResult vulkan_create_logical_device(vulkan_info_t *info) {
+static VkResult vulkan_create_device(vulkan_info_t *info,
+												queue_creation_info_t *queue_info) {
 	//initialize info.device
-	
-	uint32_t queue_family_count;
 	vkGetPhysicalDeviceQueueFamilyProperties(info->physical_device,
-																					 &queue_family_count, NULL);
+																					 &queue_info->count, NULL);
 
-	VkQueueFamilyProperties *queue_props = new VkQueueFamilyProperties[queue_family_count];
-	if (queue_props == NULL)
+	queue_info->family_props = new VkQueueFamilyProperties[queue_info->count];
+	if (queue_info->family_props == NULL)
 		return VK_ERROR_OUT_OF_HOST_MEMORY;
 
 	vkGetPhysicalDeviceQueueFamilyProperties(info->physical_device,
-																					 &queue_family_count,
-																					 queue_props);
+																					 &queue_info->count,
+																					 queue_info->family_props);
 
 #ifdef LOG_VERBOSE
 	uint32_t ext_nbr = 0;
@@ -219,12 +215,12 @@ static VkResult vulkan_create_logical_device(vulkan_info_t *info) {
 
 
 	uint32_t queue_id = get_queue_family_index(VK_QUEUE_GRAPHICS_BIT,
-												queue_family_count, queue_props);
+												queue_info->count, queue_info->family_props);
 	if (queue_id == (uint32_t)-1)
 		return VK_INCOMPLETE;
 
 	float queue_priorities[1] = { 0.0f };
-	VkDeviceQueueCreateInfo queue_info {
+	VkDeviceQueueCreateInfo queue_creation_info {
 		.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
 		.pNext = NULL,
 		.flags = 0,
@@ -238,7 +234,7 @@ static VkResult vulkan_create_logical_device(vulkan_info_t *info) {
 		.pNext = NULL,
 		.flags = 0,
 		.queueCreateInfoCount = 1,
-		.pQueueCreateInfos = &queue_info,
+		.pQueueCreateInfos = &queue_creation_info,
 		.enabledLayerCount = 0,
 		.ppEnabledLayerNames = NULL,
 		.enabledExtensionCount = static_cast<uint32_t>(device_extension_names.size()),
@@ -250,13 +246,56 @@ static VkResult vulkan_create_logical_device(vulkan_info_t *info) {
 	return vulkan_create_command_pool(info, queue_id);
 }
 
+static VkResult vulkan_create_queues(vulkan_info_t *info, queue_creation_info_t *queues) {
+	queues->present_family_index = UINT32_MAX;
+	queues->graphic_family_index = UINT32_MAX;
+
+	VkBool32 *support_present = new VkBool32[queues->count];
+
+	for (uint32_t i = 0; i < queues->count; i++) {
+		vkGetPhysicalDeviceSurfaceSupportKHR(info->physical_device,
+				i, info->surface, &support_present[i]);
+	}
+
+	for (uint32_t i = 0; i < queues->count ; i++) {
+
+		if (queues->family_props[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+			queues->graphic_family_index = i;
+
+		if (support_present[i] == VK_TRUE)
+			queues->present_family_index = i;
+		if (queues->present_family_index != UINT32_MAX
+		 && queues->graphic_family_index != UINT32_MAX)
+			break;
+	}
+
+	if (queues->present_family_index == UINT32_MAX
+	 || queues->graphic_family_index == UINT32_MAX) {
+		std::cout << "[Error] No present queue found." << std::endl;
+		return VK_INCOMPLETE;
+	}
+
+	vkGetDeviceQueue(info->device, queues->graphic_family_index, 0, &info->graphic_queue);
+	vkGetDeviceQueue(info->device, queues->present_family_index, 0, &info->present_queue);
+	return VK_SUCCESS;
+}
+
+
+
 VkResult vulkan_initialize(vulkan_info_t *info) {
 	LOG("Initializing Vulkan...");
 	
+	if (!create_window(&info->window, info->width, info->height))
+		return VK_INCOMPLETE;
 	CHECK_VK(vulkan_startup(info));
 	CHECK_VK(vulkan_initialize_devices(info));
-	CHECK_VK(vulkan_create_logical_device(info));
-	//CHECK_VK(vulkan_create_queues(info));
+
+	queue_creation_info_t queue_info = { 0 };
+	CHECK_VK(vulkan_create_device(info, &queue_info));
+
+	CHECK_VK(vulkan_create_queues(info, &queue_info));
+	
+	delete queue_info.family_props;
 
 	LOG("Vulkan initialized.");
 	return VK_SUCCESS;
