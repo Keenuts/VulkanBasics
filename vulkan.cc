@@ -311,6 +311,24 @@ VkResult FuncName(vulkan_info_t *info, VkType **s, uint32_t *nbr) {						 \
 	return VK_SUCCESS;																													 \
 }
 
+template <typename VTYPE, typename... Args>
+auto vkGetter(std::function<VkResult(Args...)> func, uint32_t *count, VTYPE **array, Args... args) {
+	VkResult res = func(std::forward<Args>(args)..., count, NULL);
+	if (res != VK_SUCCESS)
+		return res;
+	if (*count <= 0)
+		return VK_INCOMPLETE;
+
+	*array = new VTYPE[count];
+	if (!*array)
+		return VK_ERROR_OUT_OF_HOST_MEMORY;
+
+	res = func(std::forward<Args>(args)..., count, *array);
+	if (res != VK_SUCCESS)
+		delete *array;
+	return res;
+}
+
 VK_CREATE_GET_ARRAY_INFO(vulkan_get_supported_formats, vkGetPhysicalDeviceSurfaceFormatsKHR, VkSurfaceFormatKHR)
 VK_CREATE_GET_ARRAY_INFO(vulkan_get_supported_modes, vkGetPhysicalDeviceSurfacePresentModesKHR, VkPresentModeKHR)
 
@@ -318,51 +336,234 @@ static uint32_t clamp(uint32_t value, uint32_t min, uint32_t max) {
 	return value < min ? min : (value > max ? max : value);
 }
 
-VkResult vulkan_set_extents(vulkan_info_t *info) {
-  VkSurfaceCapabilitiesKHR capabilities;
-	CHECK_VK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(info->physical_device,
-																								info->surface, &capabilities));
+VkResult vulkan_set_extents(vulkan_info_t *info, VkSurfaceCapabilitiesKHR *caps) {
 	float ratio = (float)info->height / (float)info->width;
-	info->width = clamp(info->width, capabilities.minImageExtent.width,
-								 capabilities.maxImageExtent.width);
+	info->width = clamp(info->width, caps->minImageExtent.width,
+								 caps->maxImageExtent.width);
 	info->height = (float)(info->width * ratio);
-	info->height = clamp(info->height, capabilities.minImageExtent.height,
-								 capabilities.maxImageExtent.height);
+	info->height = clamp(info->height, caps->minImageExtent.height,
+								 caps->maxImageExtent.height);
 
 #ifdef LOG_VERBOSE
 	printf("[DEBUG] Min extents are %ux%u\n",
-				 capabilities.minImageExtent.width, capabilities.minImageExtent.height);
+				 caps->minImageExtent.width, caps->minImageExtent.height);
 	printf("[DEBUG] Max extents are %ux%u\n",
-				 capabilities.maxImageExtent.width, capabilities.maxImageExtent.height);
+				 caps->maxImageExtent.width, caps->maxImageExtent.height);
 #endif
 	printf("[INFO] Extents set to %ux%u\n", info->width, info->height);
 
 	return VK_SUCCESS;
 }
 
-VkResult vulkan_create_swapchain(vulkan_info_t *info) {
+static VkResult vulkan_create_swapchain(vulkan_info_t *info) {
 	//Getting supported formats
 	//And the color space
 	
-	uint32_t nbr_format;
+	uint32_t nbr_formats;
 	uint32_t nbr_modes;
 	VkSurfaceFormatKHR *supported_formats = NULL;
 	VkPresentModeKHR *supported_modes = NULL;
+  VkSurfaceCapabilitiesKHR capabilities;
 
-	VkResult res = vulkan_get_supported_formats(info, &supported_formats, &nbr_format));
+	VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR;
+	VkCompositeAlphaFlagBitsKHR composite_alpha_bits = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	VkSwapchainCreateInfoKHR swapchain_info = { };
+
+	CHECK_VK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(info->physical_device,
+																								info->surface, &capabilities));
+	CHECK_VK(vulkan_set_extents(info, &capabilities));
+
+	VkResult res = vulkan_get_supported_formats(info, &supported_formats, &nbr_formats);
 	if (res != VK_SUCCESS)
 		goto ERROR_FORMATS;
 	res = vulkan_get_supported_modes(info, &supported_modes, &nbr_modes);
 	if (res != VK_SUCCESS)
 		goto ERROR_PRESENT;
 
+	if ((nbr_formats == 1 && supported_formats[0].format == VK_FORMAT_UNDEFINED)
+		|| nbr_formats == 0) {
+		res = VK_INCOMPLETE;
+		goto ERROR;
+	}
+
+#ifdef LOG_VERBOSE
+	printf("[DEBUG] Supported formats KHR: ");
+	for (uint32_t i = 0; i < nbr_formats; i++)
+		printf("%u, ", (uint32_t)supported_formats[i].format);
+	printf("\n");
+	printf("[DEBUG] Selected format: %u\n", info->image_format);
+#endif
+
+	for (uint32_t i = 0; i < nbr_modes; i++) {
+		if (supported_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
+			present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+			break;
+		}
+		else if (supported_modes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR)
+			present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+	}
+
 	info->color_space = supported_formats[0].colorSpace;
+	info->image_format = supported_formats[0].format;
 
 
+	swapchain_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	swapchain_info.pNext = NULL;
+	swapchain_info.flags = 0;
+	swapchain_info.surface = info->surface;
+	swapchain_info.minImageCount = capabilities.minImageCount;
+	swapchain_info.imageFormat = info->image_format;
+	swapchain_info.imageColorSpace = info->color_space;
+	swapchain_info.imageExtent.width = info->width;
+	swapchain_info.imageExtent.height = info->height;
+	swapchain_info.imageArrayLayers = 1;
+	swapchain_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	swapchain_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	swapchain_info.queueFamilyIndexCount = 0;
+	swapchain_info.pQueueFamilyIndices = NULL;
+	swapchain_info.preTransform = capabilities.currentTransform;
+	swapchain_info.compositeAlpha = composite_alpha_bits;
+	swapchain_info.presentMode = present_mode;
+	swapchain_info.clipped = VK_FALSE;
+	swapchain_info.oldSwapchain = VK_NULL_HANDLE;
+	
+	
+	res = vkCreateSwapchainKHR(info->device, &swapchain_info, NULL, &info->swapchain);
+
+ERROR:
 	delete supported_modes;
 ERROR_PRESENT:
 	delete supported_formats;
 ERROR_FORMATS:
+	return res;
+}
+
+static VkResult vulkan_create_command_buffer(vulkan_info_t *info)
+{
+	VkCommandBufferAllocateInfo cmd = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.pNext = NULL,
+		.commandPool = info->cmd_pool,
+		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+		.commandBufferCount = 1,
+	};
+
+	return vkAllocateCommandBuffers(info->device, &cmd, &info->cmd_buffer);
+}
+
+static VkResult set_image_layout(VkCommandBuffer *cmd_buffer, VkImage image,
+																 VkImageAspectFlags aspects,
+																 VkImageLayout old_layout,
+																 VkImageLayout new_layout) {
+
+	VkImageMemoryBarrier barrier = {};
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.pNext = NULL;
+	barrier.oldLayout = old_layout;
+	barrier.newLayout = new_layout;
+	barrier.image = image;
+	barrier.subresourceRange.aspectMask = aspects;
+	barrier.subresourceRange.baseMipLevel = 0;
+	barrier.subresourceRange.levelCount = 1;
+	barrier.subresourceRange.layerCount = 1;
+
+	switch (old_layout) {
+		case VK_IMAGE_LAYOUT_PREINITIALIZED:
+			barrier.srcAccessMask =
+					VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+			break;
+		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+			barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+			break;
+		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+			barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			break;
+		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+			barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+			break;
+		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+			barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+			break;
+		default:
+			return VK_INCOMPLETE;
+	}
+
+	switch (new_layout) {
+		case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+			barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			break;
+		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+			barrier.srcAccessMask |= VK_ACCESS_TRANSFER_READ_BIT;
+			barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+			break;
+		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+			barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+			barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+			break;
+		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+			barrier.dstAccessMask |=
+					VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			break;
+		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+			barrier.srcAccessMask =
+					VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+			break;
+		default:
+			return VK_INCOMPLETE;
+	}
+	
+	VkPipelineStageFlagBits srcFlags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	VkPipelineStageFlagBits dstFlags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+
+	vkCmdPipelineBarrier(*cmd_buffer, srcFlags, dstFlags, 0, 0, 
+											 NULL, 0, NULL, 1, &barrier);
+	return VK_SUCCESS;
+}
+
+static VkResult vulkan_initialize_swachain_images(vulkan_info_t *info) {
+	uint32_t image_count = 0;
+	CHECK_VK(vkGetSwapchainImagesKHR(info->device, info->swapchain, &image_count, NULL));
+	if (image_count == 0)
+		return VK_INCOMPLETE;
+
+	std::vector<VkImage> images = std::vector<VkImage>(image_count);
+	CHECK_VK(vkGetSwapchainImagesKHR(info->device, info->swapchain, &image_count, images.data()));
+
+	info->swapchain_buffers = new swapchain_buffer_t[image_count];
+	for (uint32_t i = 0; i < image_count ; i++) {
+		info->swapchain_buffers[i].image = images[i];
+		set_image_layout(&info->cmd_buffer, images[i], VK_IMAGE_ASPECT_COLOR_BIT,
+									 	 VK_IMAGE_LAYOUT_UNDEFINED,
+									 	 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	}
+
+	VkResult res = VK_SUCCESS;
+	for (uint32_t i = 0; i < image_count ; i++)
+	{
+		VkImageViewCreateInfo color_image_view = {};
+		color_image_view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		color_image_view.pNext = NULL;
+		color_image_view.flags = 0;
+		color_image_view.image = info->swapchain_buffers[i].image;
+		color_image_view.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		color_image_view.format = info->image_format; 
+		color_image_view.components.r = VK_COMPONENT_SWIZZLE_R;
+		color_image_view.components.g = VK_COMPONENT_SWIZZLE_G;
+		color_image_view.components.b = VK_COMPONENT_SWIZZLE_B;
+		color_image_view.components.a = VK_COMPONENT_SWIZZLE_A;
+		color_image_view.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		color_image_view.subresourceRange.baseMipLevel = 0;
+		color_image_view.subresourceRange.levelCount = 1;
+		color_image_view.subresourceRange.baseArrayLayer = 0;
+		color_image_view.subresourceRange.layerCount = 1;
+
+		res = vkCreateImageView(info->device, &color_image_view, NULL, &info->swapchain_buffers[i].view);
+		if (res != VK_SUCCESS)
+			break;
+	}
+
+	info->current_buffer = 0;
 	return res;
 }
 
@@ -382,6 +583,8 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	CHECK_VK(vulkan_create_KHR_surface(info));
 	CHECK_VK(vulkan_create_queues(info, &queue_info));
 	CHECK_VK(vulkan_create_swapchain(info));
+	CHECK_VK(vulkan_create_command_buffer(info));
+	CHECK_VK(vulkan_initialize_swachain_images(info))
 	
 	delete queue_info.family_props;
 
