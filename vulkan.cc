@@ -280,7 +280,7 @@ static VkResult vulkan_create_queues(vulkan_info_t *info, queue_creation_info_t 
 	return VK_SUCCESS;
 }
 
-VkResult vulkan_create_KHR_surface(vulkan_info_t *info) {
+static VkResult vulkan_create_KHR_surface(vulkan_info_t *info) {
 	VkXcbSurfaceCreateInfoKHR create_info = {
 		.sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
 		.pNext = NULL,
@@ -336,7 +336,7 @@ static uint32_t clamp(uint32_t value, uint32_t min, uint32_t max) {
 	return value < min ? min : (value > max ? max : value);
 }
 
-VkResult vulkan_set_extents(vulkan_info_t *info, VkSurfaceCapabilitiesKHR *caps) {
+static VkResult vulkan_set_extents(vulkan_info_t *info, VkSurfaceCapabilitiesKHR *caps) {
 	float ratio = (float)info->height / (float)info->width;
 	info->width = clamp(info->width, caps->minImageExtent.width,
 								 caps->maxImageExtent.width);
@@ -356,9 +356,6 @@ VkResult vulkan_set_extents(vulkan_info_t *info, VkSurfaceCapabilitiesKHR *caps)
 }
 
 static VkResult vulkan_create_swapchain(vulkan_info_t *info) {
-	//Getting supported formats
-	//And the color space
-	
 	uint32_t nbr_formats;
 	uint32_t nbr_modes;
 	VkSurfaceFormatKHR *supported_formats = NULL;
