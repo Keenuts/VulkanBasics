@@ -292,45 +292,23 @@ static VkResult vulkan_create_KHR_surface(vulkan_info_t *info) {
 	return vkCreateXcbSurfaceKHR(info->instance, &create_info, NULL, &info->surface);
 }
 
-#define VK_CREATE_GET_ARRAY_INFO(FuncName, VkFunc, VkType) 										 \
-VkResult FuncName(vulkan_info_t *info, VkType **s, uint32_t *nbr) {						 \
-	*nbr = 0;																																		 \
-	VkResult res = VkFunc(info->physical_device, info->surface, nbr, NULL);			 \
-	if (res != VK_SUCCESS)																											 \
-		return res;																																 \
-	if (*nbr <= 0)																															 \
-		return VK_INCOMPLETE;																											 \
-	*s = new VkType[*nbr];																											 \
-	if (*s == NULL)																															 \
-		return VK_INCOMPLETE;																											 \
-	res = VkFunc(info->physical_device, info->surface, nbr, *s);								 \
-	if (res != VK_SUCCESS) {																										 \
-		delete *s;																																 \
-		return res;																																 \
-	}																																						 \
-	return VK_SUCCESS;																													 \
-}
-
-template <typename VTYPE, typename... Args>
-auto vkGetter(std::function<VkResult(Args...)> func, uint32_t *count, VTYPE **array, Args... args) {
-	VkResult res = func(std::forward<Args>(args)..., count, NULL);
+template <typename VTYPE, VkResult(*F)(VkPhysicalDevice, VkSurfaceKHR, uint32_t*, VTYPE*)>
+auto vkGetter(uint32_t *count, VTYPE **array, VkPhysicalDevice dev, VkSurfaceKHR surface) {
+	VkResult res = F(dev, surface, count, NULL);
 	if (res != VK_SUCCESS)
 		return res;
 	if (*count <= 0)
 		return VK_INCOMPLETE;
 
-	*array = new VTYPE[count];
+	*array = new VTYPE[*count];
 	if (!*array)
 		return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-	res = func(std::forward<Args>(args)..., count, *array);
+	res = F(dev, surface, count, *array);
 	if (res != VK_SUCCESS)
 		delete *array;
 	return res;
 }
-
-VK_CREATE_GET_ARRAY_INFO(vulkan_get_supported_formats, vkGetPhysicalDeviceSurfaceFormatsKHR, VkSurfaceFormatKHR)
-VK_CREATE_GET_ARRAY_INFO(vulkan_get_supported_modes, vkGetPhysicalDeviceSurfacePresentModesKHR, VkPresentModeKHR)
 
 static uint32_t clamp(uint32_t value, uint32_t min, uint32_t max) {
 	return value < min ? min : (value > max ? max : value);
@@ -370,10 +348,14 @@ static VkResult vulkan_create_swapchain(vulkan_info_t *info) {
 																								info->surface, &capabilities));
 	CHECK_VK(vulkan_set_extents(info, &capabilities));
 
-	VkResult res = vulkan_get_supported_formats(info, &supported_formats, &nbr_formats);
+	VkResult res = vkGetter<VkSurfaceFormatKHR, vkGetPhysicalDeviceSurfaceFormatsKHR>
+			 (&nbr_formats, &supported_formats, info->physical_device, info->surface);
+
 	if (res != VK_SUCCESS)
 		goto ERROR_FORMATS;
-	res = vulkan_get_supported_modes(info, &supported_modes, &nbr_modes);
+
+	res = vkGetter<VkPresentModeKHR, vkGetPhysicalDeviceSurfacePresentModesKHR>
+			 (&nbr_modes, &supported_modes, info->physical_device, info->surface);
 	if (res != VK_SUCCESS)
 		goto ERROR_PRESENT;
 
