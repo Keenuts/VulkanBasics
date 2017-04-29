@@ -9,7 +9,7 @@ LDLIBS= -L $(VULKAN_SDK)/lib `pkg-config --static --libs $(LIBS)` -lvulkan
 OBJ=viewer.o vulkan.o window.o objloader.o
 
 release: CXXFLAGS+=-O3
-release: viewer shaders
+release: viewer
 
 debug: CXXFLAGS+=-DLOG_VERBOSE -O0 -Werror
 debug: viewer
