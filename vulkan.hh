@@ -108,7 +108,7 @@ struct vulkan_info_t {
 };
 
 __attribute__((__used__))
-static const char *vktostring(VkResult res)
+static const char* vktostring(VkResult res)
 {
 	switch (res) {
 #define CASE_STR(N) case N: return #N

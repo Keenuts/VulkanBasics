@@ -30,22 +30,14 @@
 
 #define LOG(msg) printf("[INFO] %s\n", (msg))
 
-#ifdef LOG_VERBOSE
-#define CHECK_VK(res) 																			\
-	if (res != VK_SUCCESS) { 																	\
-		printf("[DEBUG] Vulkan failed : %s\n", vktostring(res));\
-		return res;																						\
-	}
-#else
-
 #define CHECK_VK(res) 																			\
 	if (res != VK_SUCCESS)   																	\
 		return res;
-#endif
 
 static VkResult vulkan_startup(vulkan_info_t *info) {
 	//Initialize info.instance
 	
+	VkResult res;
 	VkApplicationInfo application_info = {
 		.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
 		.pNext = NULL,
@@ -58,30 +50,37 @@ static VkResult vulkan_startup(vulkan_info_t *info) {
 
 #ifdef LOG_VERBOSE
 	uint32_t ext_nbr = 0;
-	CHECK_VK(vkEnumerateInstanceExtensionProperties(NULL, &ext_nbr, NULL));
+	res = vkEnumerateInstanceExtensionProperties(NULL, &ext_nbr, NULL);
+	CHECK_VK(res);
+
 
 	VkExtensionProperties *ext = new VkExtensionProperties[ext_nbr];
-	CHECK_VK(vkEnumerateInstanceExtensionProperties(NULL, &ext_nbr, ext));
+	if (ext == NULL)
+		return VK_ERROR_OUT_OF_HOST_MEMORY;
+	res = vkEnumerateInstanceExtensionProperties(NULL, &ext_nbr, ext);
+	CHECK_VK(res);
 
 	printf("[DEBUG] Supported instance extensions:\n");
 	for (uint32_t i = 0 ; i < ext_nbr ; i++ )
 		printf("[DEBUG]\t\t- %s\n", ext[i].extensionName);
-	delete ext;
+	delete[] ext;
 #endif
 
 
 
 #ifdef LOG_VERBOSE
 	uint32_t layer_nbr = 0;
-	CHECK_VK(vkEnumerateInstanceLayerProperties(&layer_nbr, NULL));
+	res = vkEnumerateInstanceLayerProperties(&layer_nbr, NULL);
+	CHECK_VK(res);
 
 	VkLayerProperties *layers = new VkLayerProperties[layer_nbr];
-	CHECK_VK(vkEnumerateInstanceLayerProperties(&layer_nbr, layers));
+	res = vkEnumerateInstanceLayerProperties(&layer_nbr, layers);
+	CHECK_VK(res);
 
 	printf("[DEBUG] Supported instance layers:\n");
 	for (uint32_t i = 0 ; i < layer_nbr ; i++ )
 		printf("[DEBUG]\t\t%s\n", layers[i].layerName);
-	delete layers;
+	delete[] layers;
 #endif
 
 	std::vector<const char*> extension_names = std::vector<const char*>();
@@ -120,8 +119,10 @@ static VkResult vulkan_startup(vulkan_info_t *info) {
 		.ppEnabledExtensionNames = extension_names.data(),
 	};
 
-	CHECK_VK(vkCreateInstance(&create_info, NULL, &info->instance));
-	LOG("Instance created");
+	res = vkCreateInstance(&create_info, NULL, &info->instance);
+	if(res != VK_SUCCESS)
+		return res;
+	//LOG("Instance created");
 	return VK_SUCCESS;
 }
 
@@ -129,14 +130,17 @@ static VkResult vulkan_initialize_devices(vulkan_info_t *info) {
 	//Initialize info.physical_device
 	//					 info.memory_properties
 	//					 info.device_properties
+	VkResult res = VK_SUCCESS;
 
 	uint32_t gpu_count;
-	CHECK_VK(vkEnumeratePhysicalDevices(info->instance, &gpu_count, NULL));
+	res = vkEnumeratePhysicalDevices(info->instance, &gpu_count, NULL);
+	CHECK_VK(res);
 	if (gpu_count == 0)
 		return VK_INCOMPLETE;
 
 	VkPhysicalDevice *phys_devices = new VkPhysicalDevice[gpu_count];
-	CHECK_VK(vkEnumeratePhysicalDevices(info->instance, &gpu_count, phys_devices));
+	res = vkEnumeratePhysicalDevices(info->instance, &gpu_count, phys_devices);
+	CHECK_VK(res);
 	info->physical_device = phys_devices[0];
 
 #ifdef LOG_VERBOSE
@@ -149,7 +153,7 @@ static VkResult vulkan_initialize_devices(vulkan_info_t *info) {
 #endif
 
 
-	delete phys_devices;
+	delete[] phys_devices;
 	vkGetPhysicalDeviceMemoryProperties(info->physical_device, &info->memory_properties);
 	vkGetPhysicalDeviceProperties(info->physical_device, &info->device_properties);
 	printf("[INFO] Selecting device: %s\n", info->device_properties.deviceName); 
@@ -169,6 +173,7 @@ static uint32_t get_queue_family_index(VkQueueFlagBits bits, uint32_t count,
 
 static VkResult vulkan_create_command_pool(vulkan_info_t *info, uint32_t graphic_queue) {
 	//Initialize info.cmd_pool
+	VkResult res;
 
 	VkCommandPoolCreateInfo cmd_pool_info = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -177,7 +182,8 @@ static VkResult vulkan_create_command_pool(vulkan_info_t *info, uint32_t graphic
 		.queueFamilyIndex = graphic_queue,
 	};
 
-	CHECK_VK(vkCreateCommandPool(info->device, &cmd_pool_info, NULL, &info->cmd_pool));
+	res = vkCreateCommandPool(info->device, &cmd_pool_info, NULL, &info->cmd_pool);
+	CHECK_VK(res);
 	LOG("Command pool created.");
 	return VK_SUCCESS;
 }
@@ -185,9 +191,10 @@ static VkResult vulkan_create_command_pool(vulkan_info_t *info, uint32_t graphic
 static VkResult vulkan_create_device(vulkan_info_t *info,
 												queue_creation_info_t *queue_info) {
 	//initialize info.device
+	VkResult res;
+
 	vkGetPhysicalDeviceQueueFamilyProperties(info->physical_device,
 																					 &queue_info->count, NULL);
-
 	queue_info->family_props = new VkQueueFamilyProperties[queue_info->count];
 	if (queue_info->family_props == NULL)
 		return VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -198,16 +205,18 @@ static VkResult vulkan_create_device(vulkan_info_t *info,
 
 #ifdef LOG_VERBOSE
 	uint32_t ext_nbr = 0;
-	CHECK_VK(vkEnumerateDeviceExtensionProperties(info->physical_device, NULL,
-																										  &ext_nbr, NULL));
+	res = vkEnumerateDeviceExtensionProperties(info->physical_device, NULL,
+																										  &ext_nbr, NULL);
+	CHECK_VK(res);
 	VkExtensionProperties *ext = new VkExtensionProperties[ext_nbr];
-	CHECK_VK(vkEnumerateDeviceExtensionProperties(info->physical_device, NULL,
-																								&ext_nbr, ext));
+	res = vkEnumerateDeviceExtensionProperties(info->physical_device, NULL,
+																								&ext_nbr, ext);
+	CHECK_VK(res);
 	
 	printf("[DEBUG] Supported device extensions\n");
 	for (uint32_t i = 0 ; i < ext_nbr ; i++ )
 		printf("[DEBUG] \t\t- %s\n", ext[i].extensionName);
-	delete ext;
+	delete[] ext;
 #endif
 
 	std::vector<const char*> device_extension_names = std::vector<const char*>();
@@ -242,7 +251,8 @@ static VkResult vulkan_create_device(vulkan_info_t *info,
 		.pEnabledFeatures = NULL,
 	};
 
-	CHECK_VK(vkCreateDevice(info->physical_device, &create_info, NULL, &info->device));
+	res = vkCreateDevice(info->physical_device, &create_info, NULL, &info->device);
+	CHECK_VK(res);
 	return vulkan_create_command_pool(info, queue_id);
 }
 
@@ -306,7 +316,7 @@ auto vkGetter(uint32_t *count, VTYPE **array, VkPhysicalDevice dev, VkSurfaceKHR
 
 	res = F(dev, surface, count, *array);
 	if (res != VK_SUCCESS)
-		delete *array;
+		delete[] *array;
 	return res;
 }
 
@@ -334,6 +344,7 @@ static VkResult vulkan_set_extents(vulkan_info_t *info, VkSurfaceCapabilitiesKHR
 }
 
 static VkResult vulkan_create_swapchain(vulkan_info_t *info) {
+	VkResult res;
 	uint32_t nbr_formats;
 	uint32_t nbr_modes;
 	VkSurfaceFormatKHR *supported_formats = NULL;
@@ -344,11 +355,13 @@ static VkResult vulkan_create_swapchain(vulkan_info_t *info) {
 	VkCompositeAlphaFlagBitsKHR composite_alpha_bits = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 	VkSwapchainCreateInfoKHR swapchain_info = { };
 
-	CHECK_VK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(info->physical_device,
-																								info->surface, &capabilities));
-	CHECK_VK(vulkan_set_extents(info, &capabilities));
+	res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(info->physical_device,
+																								info->surface, &capabilities);
+	CHECK_VK(res);
+	res = vulkan_set_extents(info, &capabilities);
+	CHECK_VK(res);
 
-	VkResult res = vkGetter<VkSurfaceFormatKHR, vkGetPhysicalDeviceSurfaceFormatsKHR>
+	res = vkGetter<VkSurfaceFormatKHR, vkGetPhysicalDeviceSurfaceFormatsKHR>
 			 (&nbr_formats, &supported_formats, info->physical_device, info->surface);
 
 	if (res != VK_SUCCESS)
@@ -410,9 +423,9 @@ static VkResult vulkan_create_swapchain(vulkan_info_t *info) {
 	res = vkCreateSwapchainKHR(info->device, &swapchain_info, NULL, &info->swapchain);
 
 ERROR:
-	delete supported_modes;
+	delete[] supported_modes;
 ERROR_PRESENT:
-	delete supported_formats;
+	delete[] supported_formats;
 ERROR_FORMATS:
 	return res;
 }
@@ -501,13 +514,17 @@ static VkResult set_image_layout(VkCommandBuffer *cmd_buffer, VkImage image,
 }
 
 static VkResult vulkan_initialize_swachain_images(vulkan_info_t *info) {
+	VkResult res;
 	uint32_t image_count = 0;
-	CHECK_VK(vkGetSwapchainImagesKHR(info->device, info->swapchain, &image_count, NULL));
+	res = vkGetSwapchainImagesKHR(info->device, info->swapchain, &image_count, NULL);
+	CHECK_VK(res);
 	if (image_count == 0)
 		return VK_INCOMPLETE;
 
 	std::vector<VkImage> images = std::vector<VkImage>(image_count);
-	CHECK_VK(vkGetSwapchainImagesKHR(info->device, info->swapchain, &image_count, images.data()));
+	res = vkGetSwapchainImagesKHR(info->device, info->swapchain, &image_count,
+																														images.data());
+	CHECK_VK(res);
 
 	info->swapchain_buffers = new swapchain_buffer_t[image_count];
 	for (uint32_t i = 0; i < image_count ; i++) {
@@ -517,7 +534,7 @@ static VkResult vulkan_initialize_swachain_images(vulkan_info_t *info) {
 									 	 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	}
 
-	VkResult res = VK_SUCCESS;
+	res = VK_SUCCESS;
 	for (uint32_t i = 0; i < image_count ; i++)
 	{
 		VkImageViewCreateInfo color_image_view = {};
@@ -552,20 +569,29 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	LOG("Initializing Vulkan...");
 	
 	queue_creation_info_t queue_info = { 0 };
+	VkResult res;
 
 	if (!create_window(&info->window, info->width, info->height))
 		return VK_INCOMPLETE;
 
-	CHECK_VK(vulkan_startup(info));
-	CHECK_VK(vulkan_initialize_devices(info));
-	CHECK_VK(vulkan_create_device(info, &queue_info));
-	CHECK_VK(vulkan_create_KHR_surface(info));
-	CHECK_VK(vulkan_create_queues(info, &queue_info));
-	CHECK_VK(vulkan_create_swapchain(info));
-	CHECK_VK(vulkan_create_command_buffer(info));
-	CHECK_VK(vulkan_initialize_swachain_images(info))
+	res = vulkan_startup(info);
+	CHECK_VK(res);
+	res = vulkan_initialize_devices(info);
+	CHECK_VK(res);
+	res = vulkan_create_device(info, &queue_info);
+	CHECK_VK(res);
+	res = vulkan_create_KHR_surface(info);
+	CHECK_VK(res);
+	res = vulkan_create_queues(info, &queue_info);
+	CHECK_VK(res);
+	res = vulkan_create_swapchain(info);
+	CHECK_VK(res);
+	res = vulkan_create_command_buffer(info);
+	CHECK_VK(res);
+	res = vulkan_initialize_swachain_images(info);
+	CHECK_VK(res);
 	
-	delete queue_info.family_props;
+	delete[] queue_info.family_props;
 
 	LOG("Vulkan initialized.");
 	return VK_SUCCESS;
