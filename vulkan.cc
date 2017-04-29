@@ -122,7 +122,6 @@ static VkResult vulkan_startup(vulkan_info_t *info) {
 	res = vkCreateInstance(&create_info, NULL, &info->instance);
 	if(res != VK_SUCCESS)
 		return res;
-	//LOG("Instance created");
 	return VK_SUCCESS;
 }
 
@@ -184,7 +183,6 @@ static VkResult vulkan_create_command_pool(vulkan_info_t *info, uint32_t graphic
 
 	res = vkCreateCommandPool(info->device, &cmd_pool_info, NULL, &info->cmd_pool);
 	CHECK_VK(res);
-	LOG("Command pool created.");
 	return VK_SUCCESS;
 }
 
@@ -630,9 +628,98 @@ static VkResult vulkan_create_depth_buffer(vulkan_info_t *info) {
 	view_info.image = info->depth_buffer.image;
 	res = vkCreateImageView(info->device, &view_info, NULL, &info->depth_buffer.view);
 	CHECK_VK(res);
-	LOG("Depth buffer created");
 
 	return res;
+}
+
+static bool find_memory_type_index(vulkan_info_t *info, uint32_t type,
+																	 VkFlags flags, uint32_t *res) {
+	for (uint32_t i = 0; i < info->memory_properties.memoryTypeCount; i++) {
+		if ((type & 1) == 1) {
+			if ((info->memory_properties.memoryTypes[i].propertyFlags & flags) == flags) {
+				*res = i;
+#ifdef LOG_VERBOSE
+				printf("[DEBUG] Found compatible memory type.\n");
+#endif
+				return true;
+			}
+		}
+		type >>= 1;
+	}
+	return false;
+}
+
+static VkResult vulkan_create_uniform_buffer(vulkan_info_t *info, uint32_t size) {
+	VkResult res = VK_SUCCESS;
+
+	VkBufferCreateInfo buf_info = {};
+	buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	buf_info.pNext = NULL;
+	buf_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+	buf_info.size = size;
+	buf_info.queueFamilyIndexCount = 0;
+	buf_info.pQueueFamilyIndices = NULL;
+	buf_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	buf_info.flags = 0;
+
+	res = vkCreateBuffer(info->device, &buf_info, NULL, &info->uniform_buffer.buffer);
+	CHECK_VK(res);
+	
+	VkMemoryRequirements mem_reqs;
+	vkGetBufferMemoryRequirements(info->device, info->uniform_buffer.buffer, &mem_reqs);
+
+	VkMemoryAllocateInfo alloc_info = {};
+	alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	alloc_info.pNext = NULL;
+	alloc_info.memoryTypeIndex = 0;
+	
+	alloc_info.allocationSize = mem_reqs.size;
+	bool success = find_memory_type_index(info, mem_reqs.memoryTypeBits,
+																				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+																				 | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+																				&alloc_info.memoryTypeIndex);
+	if (!success)
+		return VK_INCOMPLETE;
+	return vkAllocateMemory(info->device, &alloc_info, NULL, &info->uniform_buffer.memory);
+}
+
+static VkResult initialize_uniform_buffer(vulkan_info_t *info) {
+	VkResult res = VK_SUCCESS;
+
+	glm::mat4 projection_matrix = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 100.0f);
+	glm::vec3 camera = glm::vec3(0, 0, 5);
+	glm::vec3 origin = glm::vec3(0, 0, 0);
+	glm::vec3 up = glm::vec3(0, 1, 0);
+
+	glm::mat4 view_matrix = glm::lookAt(camera, origin, up);
+	glm::mat4 model_matrix = glm::mat4(1.0f);
+
+	glm::mat4 clip_matrix = glm::mat4(
+		1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, -1.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 0.5f, 0.0f,
+		0.0f, 0.0f, 0.5f, 1.0f);
+	
+	glm::mat4 payload = clip_matrix * projection_matrix * view_matrix * model_matrix;
+	
+	VkMemoryRequirements mem_reqs;
+	vkGetBufferMemoryRequirements(info->device, info->uniform_buffer.buffer, &mem_reqs);
+
+	uint8_t *p_data = NULL;
+	res = vkMapMemory(info->device, info->uniform_buffer.memory, 0, mem_reqs.size, 0,
+										(void**)&p_data);
+	CHECK_VK(res);
+
+	memcpy(p_data, &payload, sizeof(payload));
+	vkUnmapMemory(info->device, info->uniform_buffer.memory);
+	res = vkBindBufferMemory(info->device, info->uniform_buffer.buffer,
+													 info->uniform_buffer.memory, 0);
+	CHECK_VK(res);
+
+	info->uniform_buffer.descriptor.buffer = info->uniform_buffer.buffer;
+	info->uniform_buffer.descriptor.offset = 0;
+  info->uniform_buffer.descriptor.range = sizeof(payload); 
+	return VK_SUCCESS;	
 }
 
 VkResult vulkan_initialize(vulkan_info_t *info) {
@@ -646,10 +733,12 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 
 	res = vulkan_startup(info);
 	CHECK_VK(res);
+	LOG("Vulkan initialized.");
 	res = vulkan_initialize_devices(info);
 	CHECK_VK(res);
 	res = vulkan_create_device(info, &queue_info);
 	CHECK_VK(res);
+	LOG("Logical device created initialized.");
 	res = vulkan_create_KHR_surface(info);
 	CHECK_VK(res);
 	res = vulkan_create_queues(info, &queue_info);
@@ -658,10 +747,20 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	CHECK_VK(res);
 	res = vulkan_create_command_buffer(info);
 	CHECK_VK(res);
+	LOG("Command buffer initialized.");
 	res = vulkan_initialize_swachain_images(info);
 	CHECK_VK(res);
+	LOG("Swapchain initialized");
 	res = vulkan_create_depth_buffer(info);
 	CHECK_VK(res);
+	res = vulkan_create_uniform_buffer(info, sizeof(glm::mat4));
+	CHECK_VK(res);
+	//TODO: Later, let this take better arguments, think of update routine, etc
+	res = initialize_uniform_buffer(info);
+	LOG("Uniform buffer initialized");
+	CHECK_VK(res);
+
+
 	
 	delete[] queue_info.family_props;
 

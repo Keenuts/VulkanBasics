@@ -36,4 +36,3 @@ struct object_info_t {
 	glm::mat4 mat;
 	model_t model;
 };
-
