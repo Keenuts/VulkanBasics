@@ -564,7 +564,76 @@ static VkResult vulkan_initialize_swachain_images(vulkan_info_t *info) {
 	return res;
 }
 
+static VkResult vulkan_create_depth_buffer(vulkan_info_t *info) {
+	VkResult res = VK_SUCCESS;
 
+	VkImageCreateInfo image_info = {};
+	const VkFormat depth_format = VK_FORMAT_D16_UNORM;
+
+	image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	image_info.pNext = NULL;
+	image_info.flags = 0;
+	image_info.imageType = VK_IMAGE_TYPE_2D;
+	image_info.format = depth_format;
+	image_info.extent.width = info->width;
+	image_info.extent.height = info->height;
+	image_info.extent.depth = 1;
+	image_info.mipLevels = 1;
+	image_info.arrayLayers = 1;
+	image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+	image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+	image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	image_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	image_info.queueFamilyIndexCount = 0;
+	image_info.pQueueFamilyIndices = NULL;
+	image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	VkMemoryAllocateInfo alloc_info = {};
+	alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	alloc_info.pNext = NULL;
+	alloc_info.allocationSize = 0;
+	alloc_info.memoryTypeIndex = 0;
+
+	VkImageViewCreateInfo view_info = {};
+	view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	view_info.pNext = NULL;
+	view_info.flags = 0;
+	view_info.image = VK_NULL_HANDLE;
+	view_info.format = depth_format;
+	view_info.components.r = VK_COMPONENT_SWIZZLE_R;
+	view_info.components.g = VK_COMPONENT_SWIZZLE_G;
+	view_info.components.b = VK_COMPONENT_SWIZZLE_B;
+	view_info.components.a = VK_COMPONENT_SWIZZLE_A;
+	view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	view_info.subresourceRange.baseMipLevel = 0;
+	view_info.subresourceRange.levelCount = 1;
+	view_info.subresourceRange.baseArrayLayer = 0;
+	view_info.subresourceRange.layerCount = 1;
+	view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+
+	VkMemoryRequirements mem_reqs;
+	info->depth_buffer.format = depth_format;
+	res = vkCreateImage(info->device, &image_info, NULL, &info->depth_buffer.image);
+	CHECK_VK(res);
+
+	vkGetImageMemoryRequirements(info->device, info->depth_buffer.image, &mem_reqs);
+
+	alloc_info.allocationSize = mem_reqs.size;
+	res = vkAllocateMemory(info->device, &alloc_info, NULL,
+												 &info->depth_buffer.memory);
+	CHECK_VK(res);
+
+	res = vkBindImageMemory(info->device, info->depth_buffer.image,
+													info->depth_buffer.memory, 0);
+	CHECK_VK(res);
+
+	view_info.image = info->depth_buffer.image;
+	res = vkCreateImageView(info->device, &view_info, NULL, &info->depth_buffer.view);
+	CHECK_VK(res);
+	LOG("Depth buffer created");
+
+	return res;
+}
 
 VkResult vulkan_initialize(vulkan_info_t *info) {
 	LOG("Initializing Vulkan...");
@@ -591,6 +660,8 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	CHECK_VK(res);
 	res = vulkan_initialize_swachain_images(info);
 	CHECK_VK(res);
+	res = vulkan_create_depth_buffer(info);
+	CHECK_VK(res);
 	
 	delete[] queue_info.family_props;
 
@@ -598,7 +669,15 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	return VK_SUCCESS;
 }
 
+static void vulkan_destroy_image_buffer(VkDevice device, image_buffer_t buffer) {
+	vkDestroyImageView(device, buffer.view, NULL);
+	vkDestroyImage(device, buffer.image, NULL);
+	vkFreeMemory(device, buffer.memory, NULL);
+}
+
 void vulkan_cleanup(vulkan_info_t *info) {
+	vulkan_destroy_image_buffer(info->device, info->depth_buffer);	
+
 	for (uint32_t i = 0; i < info->swapchain_images_count; i++)
 		vkDestroyImageView(info->device, info->swapchain_buffers[i].view, NULL);
 	vkDestroySwapchainKHR(info->device, info->swapchain, NULL);
