@@ -28,3 +28,4 @@ struct window_t
 };
 
 bool create_window(window_t *window, uint32_t width, uint32_t height);
+void destroy_window(window_t *window);

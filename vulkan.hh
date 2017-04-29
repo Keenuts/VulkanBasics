@@ -83,6 +83,7 @@ struct vulkan_info_t {
 
 	VkSwapchainKHR swapchain;
 	VkImage *swapchain_images;
+	uint32_t swapchain_images_count;
 
 	image_buffer_t depth_buffer;
 	data_buffer_t uniform_buffer;
@@ -143,3 +144,4 @@ static const char* vktostring(VkResult res)
 }
 
 VkResult vulkan_initialize(vulkan_info_t *info);
+void vulkan_cleanup(vulkan_info_t *info);

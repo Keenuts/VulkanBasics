@@ -33,5 +33,7 @@ int main(int argc, char** argv) {
 		printf("[Error] Failed initialization : %s\n", vktostring(res));
 		return 1;
 	}
+
+	vulkan_cleanup(&vulkan_info);
 	return 0;
 }

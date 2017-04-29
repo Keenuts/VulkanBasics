@@ -36,7 +36,7 @@ static bool initialize_connection(window_t *window)
 	return true;
 }
 
-bool initialize_window(window_t *window, uint32_t height, uint32_t width)
+static bool initialize_window(window_t *window, uint32_t height, uint32_t width)
 {
 	window->window = xcb_generate_id(window->connection);
 	uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
@@ -84,3 +84,6 @@ bool create_window(window_t *window, uint32_t width, uint32_t height) {
 	return initialize_window(window, width, height);
 }
 
+void destroy_window(window_t *window) {
+	xcb_destroy_window(window->connection, window->window);
+}

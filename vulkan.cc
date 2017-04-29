@@ -560,6 +560,7 @@ static VkResult vulkan_initialize_swachain_images(vulkan_info_t *info) {
 	}
 
 	info->current_buffer = 0;
+	info->swapchain_images_count = image_count;
 	return res;
 }
 
@@ -595,4 +596,19 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 
 	LOG("Vulkan initialized.");
 	return VK_SUCCESS;
+}
+
+void vulkan_cleanup(vulkan_info_t *info) {
+	for (uint32_t i = 0; i < info->swapchain_images_count; i++)
+		vkDestroyImageView(info->device, info->swapchain_buffers[i].view, NULL);
+	vkDestroySwapchainKHR(info->device, info->swapchain, NULL);
+	delete[] info->swapchain_buffers;
+
+	vkFreeCommandBuffers(info->device, info->cmd_pool, 1, &info->cmd_buffer);
+	vkDestroyCommandPool(info->device, info->cmd_pool, NULL);
+	vkDeviceWaitIdle(info->device);
+	vkDestroyDevice(info->device, NULL);
+	vkDestroySurfaceKHR(info->instance, info->surface, NULL);
+	destroy_window(&info->window);
+	vkDestroyInstance(info->instance, NULL);
 }
