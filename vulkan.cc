@@ -811,6 +811,62 @@ static VkResult vulkan_create_descriptors(vulkan_info_t *info) {
 	return VK_SUCCESS;
 }
 
+VkResult vulkan_create_render_pass(vulkan_info_t *info) {
+	VkAttachmentDescription attachments[2];
+	attachments[0].flags = 0;
+	attachments[0].format = info->image_format;
+	attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
+	attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	attachments[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+	attachments[1].flags = 0;
+	attachments[1].format = info->depth_buffer.format;
+	attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
+	attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference color_reference = {};
+	color_reference.attachment = 0;
+	color_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference depth_reference = {};
+	depth_reference.attachment = 1;
+	depth_reference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkSubpassDescription subpass = {};
+	subpass.flags = 0;
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS; 
+	subpass.inputAttachmentCount = 0;
+	subpass.pInputAttachments = NULL;
+	subpass.colorAttachmentCount = 1;
+	subpass.pColorAttachments = &color_reference;
+	subpass.pResolveAttachments = NULL;
+	subpass.pDepthStencilAttachment = &depth_reference;
+	subpass.preserveAttachmentCount = 0;
+	subpass.pPreserveAttachments = NULL;
+
+	VkRenderPassCreateInfo renderPassInfo = {};
+	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	renderPassInfo.pNext = NULL;
+	renderPassInfo.flags = 0;
+	renderPassInfo.attachmentCount = 2;
+	renderPassInfo.pAttachments = attachments;
+	renderPassInfo.subpassCount = 1;
+	renderPassInfo.pSubpasses = &subpass;
+	renderPassInfo.dependencyCount = 0;
+	renderPassInfo.pDependencies = NULL;
+
+	return vkCreateRenderPass(info->device, &renderPassInfo, NULL, &info->render_pass);
+}
+
 VkResult vulkan_initialize(vulkan_info_t *info) {
 	LOG("Initializing Vulkan...");
 	
@@ -852,7 +908,10 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	CHECK_VK(res);
 	res = vulkan_create_descriptors(info);
 	CHECK_VK(res);
-	LOG("Descriptors initialized");
+	LOG("Descriptors initialized.");
+	res = vulkan_create_render_pass(info);
+	CHECK_VK(res);
+	LOG("Render pass created.");
 	
 	delete[] queue_info.family_props;
 
@@ -872,6 +931,7 @@ static void vulkan_destroy_image_buffer(VkDevice device, image_buffer_t buffer) 
 }
 
 void vulkan_cleanup(vulkan_info_t *info) {
+	vkDestroyRenderPass(info->device, info->render_pass, NULL);
 	vkDestroyDescriptorPool(info->device, info->descriptor_pool, NULL);
 	vkDestroyPipelineLayout(info->device, info->pipeline_layout, NULL);
 	for (uint32_t i = 0; i < NUM_DESCRIPTORS; i++)
