@@ -962,6 +962,40 @@ static VkResult vulkan_create_framebuffers(vulkan_info_t *info) {
 	return VK_SUCCESS;
 }
 
+static VkResult vulkan_create_vertex_buffer(vulkan_info_t *info, uint32_t size,
+																						data_buffer_t *buffer) {
+	VkResult res = VK_SUCCESS;
+
+	VkBufferCreateInfo buffer_info = {};
+	buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	buffer_info.pNext = NULL;
+	buffer_info.flags = 0; 
+	buffer_info.size = size;
+	buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE; 
+	buffer_info.queueFamilyIndexCount = 0;
+	buffer_info.pQueueFamilyIndices = NULL;
+
+	res = vkCreateBuffer(info->device, &buffer_info, NULL, &buffer->buffer);
+	CHECK_VK(res);
+
+	VkMemoryRequirements requirements;
+	vkGetBufferMemoryRequirements(info->device, buffer->buffer, &requirements);
+
+	VkMemoryAllocateInfo allocation_info = {};
+	allocation_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocation_info.pNext = NULL;
+	allocation_info.allocationSize = size;
+	allocation_info.memoryTypeIndex = 0;
+	bool success = find_memory_type_index(info, requirements.memoryTypeBits,
+																				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+																					| VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+																				&allocation_info.memoryTypeIndex);
+	if (!success)
+		return VK_INCOMPLETE;
+	return vkAllocateMemory(info->device, &allocation_info, NULL, &buffer->memory);
+}
+
 VkResult vulkan_initialize(vulkan_info_t *info) {
 	LOG("Initializing Vulkan...");
 	
