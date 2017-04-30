@@ -931,6 +931,37 @@ static VkResult vulkan_load_shaders(vulkan_info_t *info, uint32_t count,
 	return res;
 }
 
+static VkResult vulkan_create_framebuffers(vulkan_info_t *info) {
+	VkResult res = VK_SUCCESS;
+	VkImageView attachments[2];
+	attachments[1] = info->depth_buffer.view;
+
+	VkFramebufferCreateInfo framebuffer_info = {};
+	framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+	framebuffer_info.pNext = NULL;
+	framebuffer_info.flags = 0;
+	framebuffer_info.renderPass = info->render_pass;
+	framebuffer_info.attachmentCount = 2;
+	framebuffer_info.pAttachments = attachments;
+	framebuffer_info.width = info->width;
+	framebuffer_info.height = info->height;
+	framebuffer_info.layers = 1;
+
+	uint32_t i = 0;
+	info->framebuffers = new VkFramebuffer[info->swapchain_images_count];
+	if (info->framebuffers == NULL)
+		return VK_ERROR_OUT_OF_HOST_MEMORY;
+
+	for (i = 0; i < info->swapchain_images_count; i++) {
+			attachments[0] = info->swapchain_buffers[i].view;
+			res = vkCreateFramebuffer(info->device, &framebuffer_info, NULL,
+																&info->framebuffers[i]);
+			CHECK_VK(res);
+	}
+
+	return VK_SUCCESS;
+}
+
 VkResult vulkan_initialize(vulkan_info_t *info) {
 	LOG("Initializing Vulkan...");
 	
@@ -989,11 +1020,21 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	res = vulkan_load_shaders(info, NBR_SHADERS, shaders_paths, shaders_flags);
 	CHECK_VK(res);
 	LOG("Shaders loaded.");
+
+	res = vulkan_create_framebuffers(info);
+	CHECK_VK(res);
+	LOG("Framebuffers created.");
 	
 	delete[] queue_info.family_props;
 
 	LOG("Vulkan initialized.");
 	return VK_SUCCESS;
+}
+
+static void vulkan_destroy_framebuffers(VkDevice d, VkFramebuffer *b, uint32_t c) {
+	for (uint32_t i = 0; i < c; i++)
+		vkDestroyFramebuffer(d, b[i], NULL);
+	delete[] b;
 }
 
 static void vulkan_destroy_data_buffer(VkDevice device, data_buffer_t buffer) {
@@ -1008,14 +1049,17 @@ static void vulkan_destroy_image_buffer(VkDevice device, image_buffer_t buffer) 
 }
 
 void vulkan_cleanup(vulkan_info_t *info) {
-	for (uint32_t i = 0; i < NBR_SHADERS; i++) {
+	vulkan_destroy_framebuffers(info->device, info->framebuffers,
+															info->swapchain_images_count);
+
+	for (uint32_t i = 0; i < NBR_SHADERS; i++)
 		vkDestroyShaderModule(info->device, info->shader_stages[i].module, NULL);
-	}
 	delete[] info->shader_stages;
 
 	vkDestroyRenderPass(info->device, info->render_pass, NULL);
 	vkDestroyDescriptorPool(info->device, info->descriptor_pool, NULL);
 	vkDestroyPipelineLayout(info->device, info->pipeline_layout, NULL);
+
 	for (uint32_t i = 0; i < NUM_DESCRIPTORS; i++)
 		vkDestroyDescriptorSetLayout(info->device, info->descriptor_layouts[i], NULL);
 	delete[] info->descriptor_layouts;
@@ -1025,9 +1069,9 @@ void vulkan_cleanup(vulkan_info_t *info) {
 
 	for (uint32_t i = 0; i < info->swapchain_images_count; i++)
 		vkDestroyImageView(info->device, info->swapchain_buffers[i].view, NULL);
-	vkDestroySwapchainKHR(info->device, info->swapchain, NULL);
 	delete[] info->swapchain_buffers;
 
+	vkDestroySwapchainKHR(info->device, info->swapchain, NULL);
 	vkFreeCommandBuffers(info->device, info->cmd_pool, 1, &info->cmd_buffer);
 	vkDestroyCommandPool(info->device, info->cmd_pool, NULL);
 	vkDeviceWaitIdle(info->device);
