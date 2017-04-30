@@ -59,6 +59,8 @@ struct queue_creation_info_t {
 	VkQueueFamilyProperties *family_props;
 };
 
+#define NUM_DESCRIPTORS (1)
+
 struct vulkan_info_t {
 	uint32_t width;
 	uint32_t height;

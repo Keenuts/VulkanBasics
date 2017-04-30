@@ -722,6 +722,44 @@ static VkResult initialize_uniform_buffer(vulkan_info_t *info) {
 	return VK_SUCCESS;	
 }
 
+static VkResult vulkan_create_pipeline_layout(vulkan_info_t *info) {
+	VkResult res = VK_SUCCESS;
+
+	VkDescriptorSetLayoutBinding layout_binding = {};
+	layout_binding.binding = 0;
+	layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	layout_binding.descriptorCount = 1;
+	layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	layout_binding.pImmutableSamplers = NULL;
+
+
+	VkDescriptorSetLayoutCreateInfo descriptor_layout = {};
+	descriptor_layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	descriptor_layout.pNext = NULL;
+	descriptor_layout.bindingCount = 1;
+	descriptor_layout.pBindings = &layout_binding;
+
+	info->descriptor_layouts = new VkDescriptorSetLayout[NUM_DESCRIPTORS];
+	res = vkCreateDescriptorSetLayout(info->device, &descriptor_layout, NULL,
+																		info->descriptor_layouts);
+	CHECK_VK(res);
+	
+	VkPipelineLayoutCreateInfo pipeline_layout = {};
+	pipeline_layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipeline_layout.pNext = NULL;
+	pipeline_layout.flags = 0;
+	pipeline_layout.pushConstantRangeCount = 0;
+	pipeline_layout.pPushConstantRanges = NULL;
+	pipeline_layout.setLayoutCount = NUM_DESCRIPTORS;	
+	pipeline_layout.pSetLayouts = info->descriptor_layouts;
+
+	res = vkCreatePipelineLayout(info->device, &pipeline_layout, NULL,
+															 &info->pipeline_layout);
+	CHECK_VK(res);
+
+	return res;
+}
+
 VkResult vulkan_initialize(vulkan_info_t *info) {
 	LOG("Initializing Vulkan...");
 	
@@ -759,13 +797,18 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	res = initialize_uniform_buffer(info);
 	LOG("Uniform buffer initialized");
 	CHECK_VK(res);
-
-
+	res = vulkan_create_pipeline_layout(info);
+	CHECK_VK(res);
 	
 	delete[] queue_info.family_props;
 
 	LOG("Vulkan initialized.");
 	return VK_SUCCESS;
+}
+
+static void vulkan_destroy_data_buffer(VkDevice device, data_buffer_t buffer) {
+	vkDestroyBuffer(device, buffer.buffer, NULL);
+	vkFreeMemory(device, buffer.memory, NULL);
 }
 
 static void vulkan_destroy_image_buffer(VkDevice device, image_buffer_t buffer) {
@@ -775,6 +818,12 @@ static void vulkan_destroy_image_buffer(VkDevice device, image_buffer_t buffer) 
 }
 
 void vulkan_cleanup(vulkan_info_t *info) {
+	vkDestroyPipelineLayout(info->device, info->pipeline_layout, NULL);
+	for (uint32_t i = 0; i < NUM_DESCRIPTORS; i++)
+		vkDestroyDescriptorSetLayout(info->device, info->descriptor_layouts[i], NULL);
+	delete[] info->descriptor_layouts;
+
+	vulkan_destroy_data_buffer(info->device, info->uniform_buffer);
 	vulkan_destroy_image_buffer(info->device, info->depth_buffer);	
 
 	for (uint32_t i = 0; i < info->swapchain_images_count; i++)
