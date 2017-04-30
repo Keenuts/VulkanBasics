@@ -32,6 +32,10 @@
 #include "types.hh"
 #include "window.hh"
 
+#define CHECK_VK(res) 																			\
+	if (res != VK_SUCCESS)   																	\
+		return res;
+
 struct swapchain_buffer_t {
 	VkImage image;
 	VkImageView view;
@@ -146,6 +150,12 @@ static const char* vktostring(VkResult res)
 }
 
 VkResult vulkan_initialize(vulkan_info_t *info);
+VkResult vulkan_create_vertex_buffer(vulkan_info_t *info, uint32_t size,
+																						data_buffer_t *buffer);
+
 VkResult vulkan_begin_command_buffer(vulkan_info_t *info);
+VkResult vulkan_update_vertex_buffer(vulkan_info_t *info, data_buffer_t *buffer,
+																		 vertex_t *vertices, uint32_t count);
+
 VkResult vulkan_render_frame(vulkan_info_t *info);
 void vulkan_cleanup(vulkan_info_t *info);

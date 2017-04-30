@@ -32,10 +32,6 @@
 
 #define LOG(msg) printf("[INFO] %s\n", (msg))
 
-#define CHECK_VK(res) 																			\
-	if (res != VK_SUCCESS)   																	\
-		return res;
-
 static VkResult vulkan_startup(vulkan_info_t *info) {
 	//Initialize info.instance
 	
@@ -962,7 +958,35 @@ static VkResult vulkan_create_framebuffers(vulkan_info_t *info) {
 	return VK_SUCCESS;
 }
 
-static VkResult vulkan_create_vertex_buffer(vulkan_info_t *info, uint32_t size,
+static VkResult vulkan_create_vertex_bindings(vulkan_info_t *info) {
+	info->vertex_binding.binding = 0;
+	info->vertex_binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	info->vertex_binding.stride = sizeof(vertex_t);
+	
+	info->vertex_attribute = new VkVertexInputAttributeDescription[3];
+	if (info->vertex_attribute == NULL)
+		return VK_ERROR_OUT_OF_HOST_MEMORY;
+
+	//POSITION
+	info->vertex_attribute[0].location = 0;
+	info->vertex_attribute[0].binding = 0;
+	info->vertex_attribute[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+	info->vertex_attribute[0].offset = 0;
+	//NORMAL
+	info->vertex_attribute[1].location = 1;
+	info->vertex_attribute[1].binding = 0;
+	info->vertex_attribute[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+	info->vertex_attribute[1].offset = 4 * 3; //Stored as RGBA
+	//UV
+	info->vertex_attribute[2].location = 2;
+	info->vertex_attribute[2].binding = 0;
+	info->vertex_attribute[2].format = VK_FORMAT_R32G32_SFLOAT;
+	info->vertex_attribute[2].offset = 4 * 3 + 4 * 3; //Stored as RGBA
+
+	return VK_SUCCESS;
+}
+
+VkResult vulkan_create_vertex_buffer(vulkan_info_t *info, uint32_t size,
 																						data_buffer_t *buffer) {
 	VkResult res = VK_SUCCESS;
 
@@ -991,11 +1015,37 @@ static VkResult vulkan_create_vertex_buffer(vulkan_info_t *info, uint32_t size,
 																				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
 																					| VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 																				&allocation_info.memoryTypeIndex);
+	buffer->descriptor.range = size;
 	if (!success)
 		return VK_INCOMPLETE;
 	return vkAllocateMemory(info->device, &allocation_info, NULL, &buffer->memory);
 }
 
+VkResult vulkan_update_vertex_buffer(vulkan_info_t *info, data_buffer_t *buffer,
+																		 vertex_t *vertices, uint32_t count) {
+	void *ptr = NULL;
+	uint32_t data_size = count * sizeof(vertex_t);
+	VkResult res = VK_SUCCESS;
+
+	if (buffer->descriptor.range < data_size) {
+		LOG("Tried to write more bytes than there is in a buffer");
+		return VK_INCOMPLETE;
+	}
+
+	res = vkMapMemory(info->device, info->vertex_buffer.memory, 0, data_size, 0, &ptr);
+	CHECK_VK(res);
+
+	memcpy(ptr, vertices, data_size);
+	vkUnmapMemory(info->device, buffer->memory);
+
+	res = vkBindBufferMemory(info->device, buffer->buffer, buffer->memory, 0);
+	CHECK_VK(res);
+
+	info->vertex_count = count;
+	return VK_SUCCESS;
+}
+
+__attribute__((__used__))
 static VkResult vulkan_create_simple_vertex_buffer(vulkan_info_t *info) {
 	VkResult res = VK_SUCCESS;
 
@@ -1010,40 +1060,8 @@ static VkResult vulkan_create_simple_vertex_buffer(vulkan_info_t *info) {
 
 	res = vulkan_create_vertex_buffer(info, buffer_size , &info->vertex_buffer);
 	CHECK_VK(res);
-
-	void *ptr = NULL;
-	res = vkMapMemory(info->device, info->vertex_buffer.memory, 0, buffer_size, 0, &ptr);
-	CHECK_VK(res);
-
-	memcpy(ptr, &triangle, buffer_size);
-	vkUnmapMemory(info->device, info->vertex_buffer.memory);
-
-	res = vkBindBufferMemory(info->device, info->vertex_buffer.buffer,
-													 info->vertex_buffer.memory, 0);
-	CHECK_VK(res);
-
-	info->vertex_binding.binding = 0;
-	info->vertex_binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-	info->vertex_binding.stride = sizeof(vertex_t);
-	
-	info->vertex_attribute = new VkVertexInputAttributeDescription[3];
-	//POSITION
-	info->vertex_attribute[0].location = 0;
-	info->vertex_attribute[0].binding = 0;
-	info->vertex_attribute[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-	info->vertex_attribute[0].offset = 0;
-	//NORMAL
-	info->vertex_attribute[1].location = 1;
-	info->vertex_attribute[1].binding = 0;
-	info->vertex_attribute[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-	info->vertex_attribute[1].offset = 4 * 3; //Stored as RGBA
-	//UV
-	info->vertex_attribute[2].location = 2;
-	info->vertex_attribute[2].binding = 0;
-	info->vertex_attribute[2].format = VK_FORMAT_R32G32_SFLOAT;
-	info->vertex_attribute[2].offset = 4 * 3 + 4 * 3; //Stored as RGBA
-
-	return VK_SUCCESS;
+	res = vulkan_update_vertex_buffer(info, &info->vertex_buffer, triangle, 3);
+	return res;
 }
 
 static VkResult vulkan_create_pipeline(vulkan_info_t *info) {
@@ -1080,7 +1098,7 @@ static VkResult vulkan_create_pipeline(vulkan_info_t *info) {
 	rasterization_state.depthClampEnable = VK_FALSE;
 	rasterization_state.rasterizerDiscardEnable = VK_FALSE;
 	rasterization_state.polygonMode = VK_POLYGON_MODE_FILL;
-	rasterization_state.cullMode = VK_CULL_MODE_BACK_BIT; //_NONE
+	rasterization_state.cullMode = VK_CULL_MODE_FRONT_BIT; //_NONE
 	rasterization_state.frontFace = VK_FRONT_FACE_CLOCKWISE;
 	rasterization_state.depthBiasEnable = VK_FALSE;
 	rasterization_state.depthBiasConstantFactor = 0;
@@ -1241,12 +1259,10 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	LOG("Shaders loaded.");
 	res = vulkan_create_framebuffers(info);
 	CHECK_VK(res);
-	LOG("Framebuffers created.");
-	res = vulkan_create_simple_vertex_buffer(info);
-	LOG("Creating a triangle.");
+	res = vulkan_create_vertex_bindings(info);
 	CHECK_VK(res);
 	res = vulkan_create_pipeline(info);
-	LOG("Creating a pipeline.");
+	LOG("Pipeline initialized.");
 	CHECK_VK(res);
 	
 	delete[] queue_info.family_props;

@@ -35,6 +35,14 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
+	printf("[INFO] Creating vertex buffer.\n");
+	res = vulkan_create_vertex_buffer(&vulkan_info, model.count * sizeof(vertex_t),
+																		&vulkan_info.vertex_buffer);
+	CHECK_VK(res);
+	printf("[INFO] Setting vertex buffer data.\n");
+	res = vulkan_update_vertex_buffer(&vulkan_info, &vulkan_info.vertex_buffer,
+																		model.vertices, model.count);
+	CHECK_VK(res);
 
 #define CLOCKS_PER_TICK (CLOCKS_PER_SEC / 1000000.0f)
 #define FRAMERATE (60.0f)
@@ -43,19 +51,17 @@ int main(int argc, char** argv) {
 
 	clock_t last_tick = clock() / CLOCKS_PER_TICK;
 
+	printf("[INFO] Done.\n");
 	for (uint32_t i = 0; i < 500; i++) {
 		res = vulkan_begin_command_buffer(&vulkan_info);
+		CHECK_VK(res);
 		res = vulkan_render_frame(&vulkan_info);
+		CHECK_VK(res);
 
 		clock_t current_tick = clock() / CLOCKS_PER_TICK;
 		clock_t early = (current_tick - last_tick - TICKS_PER_FRAME);
-		if (early > 0)
-			usleep(early * 25);
-		//while (current_tick - last_tick < CLOCKS_PER_FRAME) {
-		//	current_tick = clock() / CLOCKS_PER_TICK;
-		//	}
+		if (early > 0) { usleep(early * 25); }
 		last_tick = current_tick;
-
 	}
 
 	vulkan_cleanup(&vulkan_info);

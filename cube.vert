@@ -19,7 +19,7 @@ out gl_PerVertex {
 
 void main() 
 {
-	color_out = vec4(uv.xyy, 1.0);
+	color_out = vec4(0.1, 0.9, 0.1, 1.0);
 	normal_out = normal;
 	gl_Position = matrices.MVP * vec4(position, 1.0);
 }

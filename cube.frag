@@ -7,5 +7,5 @@ layout (location = 1) in vec3 normal;
 layout (location = 0) out vec4 out_color;
 
 void main() {
-   out_color = color;
+   out_color = color * dot(normal, normalize(vec3(0.2, 0.9, 0.1)));
 }
