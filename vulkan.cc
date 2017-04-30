@@ -760,6 +760,57 @@ static VkResult vulkan_create_pipeline_layout(vulkan_info_t *info) {
 	return res;
 }
 
+static VkResult vulkan_create_descriptor_pool(vulkan_info_t *info) {
+	VkDescriptorPoolSize type_count[1];
+	type_count[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	type_count[0].descriptorCount = 1;
+
+	VkDescriptorPoolCreateInfo pool_info = {};
+	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pool_info.pNext = NULL;
+	pool_info.maxSets = 1;
+	pool_info.poolSizeCount = 1;
+	pool_info.pPoolSizes = type_count;
+
+	return vkCreateDescriptorPool(info->device, &pool_info, NULL,
+																&info->descriptor_pool);
+}
+
+static VkResult vulkan_create_descriptors(vulkan_info_t *info) {
+	VkResult res = VK_SUCCESS;
+
+	res = vulkan_create_descriptor_pool(info);
+	CHECK_VK(res);
+
+	VkDescriptorSetAllocateInfo alloc_info[1];
+	alloc_info[0].sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	alloc_info[0].pNext = NULL;
+	alloc_info[0].descriptorPool = info->descriptor_pool;
+	alloc_info[0].descriptorSetCount = NUM_DESCRIPTORS;
+	alloc_info[0].pSetLayouts = info->descriptor_layouts;
+	
+	//TODO: compile time allocation ?
+	info->descriptor_sets = new VkDescriptorSet[NUM_DESCRIPTORS];
+	res = vkAllocateDescriptorSets(info->device, alloc_info, info->descriptor_sets);
+	CHECK_VK(res);
+
+	VkWriteDescriptorSet writes[1];
+
+	writes[0] = {};
+	writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[0].pNext = NULL;
+	writes[0].dstSet = info->descriptor_sets[0];
+	writes[0].descriptorCount = 1;
+	writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	writes[0].pBufferInfo = &info->uniform_buffer.descriptor;
+	writes[0].dstArrayElement = 0;
+	writes[0].dstBinding = 0;
+
+	vkUpdateDescriptorSets(info->device, 1, writes, 0, NULL);
+
+	return VK_SUCCESS;
+}
+
 VkResult vulkan_initialize(vulkan_info_t *info) {
 	LOG("Initializing Vulkan...");
 	
@@ -799,6 +850,9 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	CHECK_VK(res);
 	res = vulkan_create_pipeline_layout(info);
 	CHECK_VK(res);
+	res = vulkan_create_descriptors(info);
+	CHECK_VK(res);
+	LOG("Descriptors initialized");
 	
 	delete[] queue_info.family_props;
 
@@ -818,6 +872,7 @@ static void vulkan_destroy_image_buffer(VkDevice device, image_buffer_t buffer) 
 }
 
 void vulkan_cleanup(vulkan_info_t *info) {
+	vkDestroyDescriptorPool(info->device, info->descriptor_pool, NULL);
 	vkDestroyPipelineLayout(info->device, info->pipeline_layout, NULL);
 	for (uint32_t i = 0; i < NUM_DESCRIPTORS; i++)
 		vkDestroyDescriptorSetLayout(info->device, info->descriptor_layouts[i], NULL);
