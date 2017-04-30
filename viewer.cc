@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
 	vulkan_info.height = 500;
 
 	model_t model = { 0 };
-	if (!load_model("mesh.obj", &model)) {
+	if (!load_model("teapot.obj", &model)) {
 		printf("[ERROR] Unable to load a model\n");
 		return 1;
 	}

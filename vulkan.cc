@@ -684,8 +684,8 @@ static VkResult vulkan_create_uniform_buffer(vulkan_info_t *info, uint32_t size)
 static VkResult initialize_uniform_buffer(vulkan_info_t *info) {
 	VkResult res = VK_SUCCESS;
 
-	glm::mat4 projection_matrix = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 100.0f);
-	glm::vec3 camera = glm::vec3(0, 0, 5);
+	glm::mat4 projection_matrix = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 1000.0f);
+	glm::vec3 camera = glm::vec3(0, 100, 200);
 	glm::vec3 origin = glm::vec3(0, 0, 0);
 	glm::vec3 up = glm::vec3(0, 1, 0);
 

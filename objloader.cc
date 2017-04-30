@@ -1,4 +1,6 @@
+#include <iostream>
 #include <fstream>
+#include <sstream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,76 +9,111 @@
 
 #include "objloader.hh"
 
-typedef struct face {
+struct face_t {
 	uint32_t vtx[3];
 	uint32_t uv[3];
 	uint32_t nrm[3];
-} face_t;
+};
 
-struct raw_data {
+struct raw_data_t {
 	std::string name;
 	std::vector<v3_t> vtx;
 	std::vector<v3_t> nrm;
 	std::vector<v2_t> uv;
-	std::vector<struct face> face;
+	std::vector<face_t> face;
 };
 
-bool parse_obj(const char* path, struct raw_data* data) {
+
+static bool parse_vertex(std::stringstream &stream, std::vector<v3_t> *vtx) {
+		std::string a, b, c;
+		stream >> a;
+		stream >> b;
+		stream >> c;
+		if (a.length() == 0 || b.length() == 0 || c.length() == 0)
+			return false;
+
+		v3_t v;
+		v.x = std::stof(a);
+		v.y = std::stof(b);
+		v.z = std::stof(c);
+		vtx->push_back(v);
+		return true;
+}
+
+static bool parse_uv(std::stringstream &stream, std::vector<v2_t> *uv) {
+		std::string a, b;
+		stream >> a;
+		stream >> b;
+		if (a.length() == 0 || b.length() == 0)
+			return false;
+
+		v2_t v;
+		v.x = std::stof(a);
+		v.y = std::stof(b);
+		uv->push_back(v);
+		return true;
+}
+
+static bool parse_face(std::stringstream &stream, std::vector<face_t> *faces) {
+	face_t f;
+	for (uint32_t i = 0; i < 3; i++) {
+		std::string v, vt, nrm;
+		getline(stream, v, '/');
+		getline(stream, vt, '/');
+		getline(stream, nrm, ' ');
+
+		if (v.length() == 0 || vt.length() == 0 || nrm.length() == 0)
+			return false;
+
+		f.vtx[i] = std::stoi(v);
+		f.uv[i] = std::stoi(vt);
+		f.nrm[i] = std::stoi(nrm);
+	}
+	faces->push_back(f);
+	return true;
+}
+
+bool parse_obj(const char* path, raw_data_t *data) {
 	if (!data)
 		return false;
 
 	std::string name = "Default";
-	std::ifstream input;
-	input.open(path);
+	std::ifstream input(path);
 
 	std::vector<v3_t> vtx = std::vector<v3_t>();
 	std::vector<v3_t> nrm = std::vector<v3_t>();
 	std::vector<v2_t> uv = std::vector<v2_t>();
-	std::vector<struct face> face = std::vector<struct face>();
+	std::vector<face_t> face = std::vector<face_t>();
 
-	bool reading = true;
-
-	while (reading) {
+	std::string line;
+	while (std::getline(input, line)) {
+		std::stringstream in(line);
 		std::string head;
-		input >> head;
-		if (!strcmp(head.data(), "o"))
-			input >> name;
-		else if (!strcmp(head.data(), "v")) {
-			v3_t v;
-			input >> v.x;
-			input >> v.y;
-			input >> v.z;
-			vtx.push_back(v);
+
+		in >> head;
+		if (head == "#" || head == "")
+				continue;
+		else if (head == "v") {
+				if (!parse_vertex(in, &vtx)) { return false; }
 		}
-		else if (!strcmp(head.data(), "vt")) {
-			v2_t v;
-			input >> v.x;
-			input >> v.y;
-			uv.push_back(v);
+		else if (head == "vn") {
+				if (!parse_vertex(in, &nrm)) { return false; }
 		}
-		else if (!strcmp(head.data(), "vn")) {
-			v3_t n;
-			input >> n.x;
-			input >> n.y;
-			input >> n.z;
-			nrm.push_back(n);
+		else if (head == "vt") {
+				if (!parse_uv(in, &uv)) { return false; }
 		}
-		else if (!strcmp(head.data(), "f")) {
-			struct face f;
-			for (uint32_t i = 0; i < 3; i++) {
-				input >> f.vtx[i];
-				input.get();
-				input >> f.uv[i];
-				input.get();
-				input >> f.nrm[i];
-			}
-			face.push_back(f);
+		else if (head == "f") {
+				if (!parse_face(in, &face)) { return false; }
 		}
-		else if (head.size() < 1)
-			break;
+		else if (head == "o")
+			getline(in, name);
+		else if (head == "g")
+		{ }	//NON IMPLEMENTED
+		else if (head == "usemlt")
+		{ }	//NON IMPLEMENTED
 		else {
-			printf("[ERROR] Invalid token %s\n", head.data());
-			return false;
+				printf("[ERROR] Unknown head: %s\n", head.data());
+				return false;
 		}
 	}
 
@@ -92,7 +129,7 @@ bool parse_obj(const char* path, struct raw_data* data) {
 }
 
 bool load_model(const char* path, model_t *model) {
-	struct raw_data raw;
+	raw_data_t raw;
 	
 	if (!model)
 		return false;
