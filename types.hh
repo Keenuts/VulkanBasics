@@ -17,8 +17,8 @@ struct v2_t {
 	float x, y;
 };
 
-struct v3_t : v2_t {
-	float z;
+struct v3_t {
+	float x, y, z;
 };
 
 struct vertex_t {

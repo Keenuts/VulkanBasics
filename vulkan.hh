@@ -146,4 +146,6 @@ static const char* vktostring(VkResult res)
 }
 
 VkResult vulkan_initialize(vulkan_info_t *info);
+VkResult vulkan_begin_command_buffer(vulkan_info_t *info);
+VkResult vulkan_render_frame(vulkan_info_t *info);
 void vulkan_cleanup(vulkan_info_t *info);

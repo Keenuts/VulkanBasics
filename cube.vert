@@ -6,9 +6,12 @@ layout (std140, binding = 0) uniform _matrices {
         mat4 MVP;
 } matrices;
 
-layout (location = 0) in vec4 pos;
-layout (location = 1) in vec4 color_in;
+layout (location = 0) in vec3 position;
+layout (location = 1) in vec3 normal;
+layout (location = 2) in vec2 uv;
+
 layout (location = 0) out vec4 color_out;
+layout (location = 1) out vec3 normal_out;
 
 out gl_PerVertex {
         vec4 gl_Position;
@@ -16,6 +19,7 @@ out gl_PerVertex {
 
 void main() 
 {
-	color_out = color_in;
-	gl_Position = matrices.MVP * pos;
+	color_out = vec4(uv.xyy, 1.0);
+	normal_out = normal;
+	gl_Position = matrices.MVP * vec4(position, 1.0);
 }

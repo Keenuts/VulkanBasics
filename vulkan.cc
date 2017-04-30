@@ -996,6 +996,191 @@ static VkResult vulkan_create_vertex_buffer(vulkan_info_t *info, uint32_t size,
 	return vkAllocateMemory(info->device, &allocation_info, NULL, &buffer->memory);
 }
 
+static VkResult vulkan_create_simple_vertex_buffer(vulkan_info_t *info) {
+	VkResult res = VK_SUCCESS;
+
+	vertex_t triangle[] = {
+		{ { -1, 0, 0 }, { 0, 0, 1 }, { 1, 1 } },
+		{ { 0, 1, 0 }, { 0, 0, 1 }, { 1, 0 } },
+		{ { 1, 0, 0 }, { 0, 0, 1 }, { 0, 1 } },
+	};
+
+	uint32_t buffer_size = sizeof(triangle);
+	info->vertex_count += 3;
+
+	res = vulkan_create_vertex_buffer(info, buffer_size , &info->vertex_buffer);
+	CHECK_VK(res);
+
+	void *ptr = NULL;
+	res = vkMapMemory(info->device, info->vertex_buffer.memory, 0, buffer_size, 0, &ptr);
+	CHECK_VK(res);
+
+	memcpy(ptr, &triangle, buffer_size);
+	vkUnmapMemory(info->device, info->vertex_buffer.memory);
+
+	res = vkBindBufferMemory(info->device, info->vertex_buffer.buffer,
+													 info->vertex_buffer.memory, 0);
+	CHECK_VK(res);
+
+	info->vertex_binding.binding = 0;
+	info->vertex_binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	info->vertex_binding.stride = sizeof(vertex_t);
+	
+	info->vertex_attribute = new VkVertexInputAttributeDescription[3];
+	//POSITION
+	info->vertex_attribute[0].location = 0;
+	info->vertex_attribute[0].binding = 0;
+	info->vertex_attribute[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+	info->vertex_attribute[0].offset = 0;
+	//NORMAL
+	info->vertex_attribute[1].location = 1;
+	info->vertex_attribute[1].binding = 0;
+	info->vertex_attribute[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+	info->vertex_attribute[1].offset = 4 * 3; //Stored as RGBA
+	//UV
+	info->vertex_attribute[2].location = 2;
+	info->vertex_attribute[2].binding = 0;
+	info->vertex_attribute[2].format = VK_FORMAT_R32G32_SFLOAT;
+	info->vertex_attribute[2].offset = 4 * 3 + 4 * 3; //Stored as RGBA
+
+	return VK_SUCCESS;
+}
+
+static VkResult vulkan_create_pipeline(vulkan_info_t *info) {
+	VkDynamicState dynamic_state_enable[VK_DYNAMIC_STATE_RANGE_SIZE];
+	memset(dynamic_state_enable, 0, sizeof dynamic_state_enable);
+
+	VkPipelineDynamicStateCreateInfo dynamic_state = {};
+	dynamic_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamic_state.pNext = NULL;
+	dynamic_state.flags = 0;
+	dynamic_state.dynamicStateCount = 0;
+	dynamic_state.pDynamicStates = dynamic_state_enable;
+
+	VkPipelineVertexInputStateCreateInfo vtx_input;
+	vtx_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vtx_input.pNext = NULL;
+	vtx_input.flags = 0;
+	vtx_input.vertexBindingDescriptionCount = 1;
+	vtx_input.pVertexBindingDescriptions = &info->vertex_binding;
+	vtx_input.vertexAttributeDescriptionCount = 3;
+	vtx_input.pVertexAttributeDescriptions = info->vertex_attribute;
+
+	VkPipelineInputAssemblyStateCreateInfo input_assembly;
+	input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	input_assembly.pNext = NULL;
+	input_assembly.flags = 0;
+	input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	input_assembly.primitiveRestartEnable = VK_FALSE;
+
+	VkPipelineRasterizationStateCreateInfo rasterization_state;
+	rasterization_state.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterization_state.pNext = NULL;
+	rasterization_state.flags = 0;
+	rasterization_state.depthClampEnable = VK_FALSE;
+	rasterization_state.rasterizerDiscardEnable = VK_FALSE;
+	rasterization_state.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterization_state.cullMode = VK_CULL_MODE_BACK_BIT; //_NONE
+	rasterization_state.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	rasterization_state.depthBiasEnable = VK_FALSE;
+	rasterization_state.depthBiasConstantFactor = 0;
+	rasterization_state.depthBiasClamp = 0;
+	rasterization_state.depthBiasSlopeFactor = 0;
+	rasterization_state.lineWidth = 1.0f;
+
+	VkPipelineColorBlendAttachmentState attachment_state[1];
+	attachment_state[0].blendEnable = VK_FALSE;
+	attachment_state[0].srcColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	attachment_state[0].dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	attachment_state[0].colorBlendOp = VK_BLEND_OP_ADD;
+	attachment_state[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	attachment_state[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	attachment_state[0].alphaBlendOp = VK_BLEND_OP_ADD;
+	attachment_state[0].colorWriteMask = 0xf;
+
+	VkPipelineColorBlendStateCreateInfo color_blend;
+	color_blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	color_blend.pNext = NULL;
+	color_blend.flags = 0;
+	color_blend.logicOpEnable = VK_FALSE;
+	color_blend.logicOp = VK_LOGIC_OP_NO_OP;
+	color_blend.attachmentCount = 1;
+	color_blend.pAttachments = attachment_state;
+
+	color_blend.blendConstants[0] = 1.0f;
+	color_blend.blendConstants[1] = 1.0f;
+	color_blend.blendConstants[2] = 1.0f;
+	color_blend.blendConstants[3] = 1.0f;
+
+
+	VkPipelineViewportStateCreateInfo viewport_state = {};
+	viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewport_state.pNext = NULL;
+	viewport_state.flags = 0;
+	viewport_state.viewportCount = 1;
+	viewport_state.pViewports = NULL;
+	viewport_state.scissorCount = 1;
+	viewport_state.pScissors = NULL;
+
+	dynamic_state_enable[dynamic_state.dynamicStateCount++] = VK_DYNAMIC_STATE_SCISSOR;
+	dynamic_state_enable[dynamic_state.dynamicStateCount++] = VK_DYNAMIC_STATE_VIEWPORT;
+
+	VkPipelineDepthStencilStateCreateInfo depth_stencil;
+	depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depth_stencil.pNext = NULL;
+	depth_stencil.flags = 0;
+	depth_stencil.depthTestEnable = VK_TRUE;
+	depth_stencil.depthWriteEnable = VK_TRUE;
+	depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depth_stencil.depthBoundsTestEnable = VK_FALSE;
+	depth_stencil.stencilTestEnable = VK_FALSE;
+	depth_stencil.back.failOp = VK_STENCIL_OP_KEEP;
+	depth_stencil.back.passOp = VK_STENCIL_OP_KEEP;
+	depth_stencil.back.compareOp = VK_COMPARE_OP_ALWAYS;
+	depth_stencil.back.compareMask = 0;
+	depth_stencil.back.reference = 0;
+	depth_stencil.back.depthFailOp = VK_STENCIL_OP_KEEP;
+	depth_stencil.back.writeMask = 0;
+	depth_stencil.front = depth_stencil.back;
+	depth_stencil.minDepthBounds = 0;
+	depth_stencil.maxDepthBounds = 0;
+
+	VkPipelineMultisampleStateCreateInfo multisample;
+	multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisample.pNext = NULL;
+	multisample.flags = 0;
+	multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	multisample.sampleShadingEnable = VK_FALSE;
+	multisample.minSampleShading = 0.0;
+	multisample.pSampleMask = NULL;
+	multisample.alphaToCoverageEnable = VK_FALSE;
+	multisample.alphaToOneEnable = VK_FALSE;
+
+	VkGraphicsPipelineCreateInfo pipeline;
+	pipeline.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipeline.pNext = NULL;
+	pipeline.flags = 0;
+	pipeline.stageCount = 2;
+	pipeline.pStages = info->shader_stages;
+	pipeline.pVertexInputState = &vtx_input;
+	pipeline.pInputAssemblyState = &input_assembly;
+	pipeline.pTessellationState = NULL;
+	pipeline.pViewportState = &viewport_state;
+	pipeline.pRasterizationState = &rasterization_state;
+	pipeline.pMultisampleState = &multisample;
+	pipeline.pDepthStencilState = &depth_stencil;
+	pipeline.pColorBlendState = &color_blend;
+	pipeline.pDynamicState = &dynamic_state;
+	pipeline.layout = info->pipeline_layout;
+	pipeline.renderPass = info->render_pass;
+	pipeline.subpass = 0;
+	pipeline.basePipelineHandle = VK_NULL_HANDLE;
+	pipeline.basePipelineIndex = 0;
+
+	return vkCreateGraphicsPipelines(info->device, VK_NULL_HANDLE,
+																	 1, &pipeline, NULL, &info->pipeline);
+}
+
 VkResult vulkan_initialize(vulkan_info_t *info) {
 	LOG("Initializing Vulkan...");
 	
@@ -1054,10 +1239,15 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	res = vulkan_load_shaders(info, NBR_SHADERS, shaders_paths, shaders_flags);
 	CHECK_VK(res);
 	LOG("Shaders loaded.");
-
 	res = vulkan_create_framebuffers(info);
 	CHECK_VK(res);
 	LOG("Framebuffers created.");
+	res = vulkan_create_simple_vertex_buffer(info);
+	LOG("Creating a triangle.");
+	CHECK_VK(res);
+	res = vulkan_create_pipeline(info);
+	LOG("Creating a pipeline.");
+	CHECK_VK(res);
 	
 	delete[] queue_info.family_props;
 
@@ -1083,6 +1273,8 @@ static void vulkan_destroy_image_buffer(VkDevice device, image_buffer_t buffer) 
 }
 
 void vulkan_cleanup(vulkan_info_t *info) {
+	vkDestroyPipeline(info->device, info->pipeline, NULL);
+	vulkan_destroy_data_buffer(info->device, info->vertex_buffer);
 	vulkan_destroy_framebuffers(info->device, info->framebuffers,
 															info->swapchain_images_count);
 
@@ -1113,4 +1305,136 @@ void vulkan_cleanup(vulkan_info_t *info) {
 	vkDestroySurfaceKHR(info->instance, info->surface, NULL);
 	destroy_window(&info->window);
 	vkDestroyInstance(info->instance, NULL);
+}
+
+VkResult vulkan_begin_command_buffer(vulkan_info_t *info) {
+	VkCommandBufferBeginInfo cmd_info = {};
+	cmd_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	cmd_info.pNext = NULL;
+	cmd_info.flags = 0;
+	cmd_info.pInheritanceInfo = NULL;
+
+	return vkBeginCommandBuffer(info->cmd_buffer, &cmd_info);
+}
+
+static VkResult vulkan_create_semaphore(vulkan_info_t *info, VkSemaphore *semaphore) {
+	VkSemaphoreCreateInfo create_info;
+	create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	create_info.pNext = NULL;
+	create_info.flags = 0;
+	//Seriously ?
+	
+	return vkCreateSemaphore(info->device, &create_info, NULL, semaphore);
+}
+
+VkResult vulkan_render_frame(vulkan_info_t *info) {
+	VkResult res = VK_SUCCESS;
+	VkClearValue clear_values[2];
+	clear_values[0].color = {0.2f, 0.2f, 0.2f, 0.2f };
+	clear_values[1].depthStencil.depth = 1.0f;
+	clear_values[1].depthStencil.stencil = 0;
+
+	VkSemaphore semaphore;
+	res = vulkan_create_semaphore(info, &semaphore);
+	CHECK_VK(res);
+
+	res = vkAcquireNextImageKHR(info->device, info->swapchain, UINT64_MAX, semaphore,
+															VK_NULL_HANDLE, &info->current_buffer);
+	CHECK_VK(res);
+	
+	set_image_layout(&info->cmd_buffer,
+								 info->swapchain_buffers[info->current_buffer].image,
+								 VK_IMAGE_ASPECT_COLOR_BIT,
+								 VK_IMAGE_LAYOUT_UNDEFINED,
+								 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+	VkRenderPassBeginInfo pass_begin_info = {};
+	pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	pass_begin_info.pNext = NULL;
+	pass_begin_info.renderPass = info->render_pass;
+	pass_begin_info.framebuffer = info->framebuffers[info->current_buffer];
+	pass_begin_info.renderArea.offset.x = 0;
+	pass_begin_info.renderArea.offset.y = 0;
+	pass_begin_info.renderArea.extent.width = info->width;
+	pass_begin_info.renderArea.extent.height = info->height;
+	pass_begin_info.clearValueCount = 2;
+	pass_begin_info.pClearValues = clear_values;
+	
+	vkCmdBeginRenderPass(info->cmd_buffer, &pass_begin_info,
+											 VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBindPipeline(info->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+										info->pipeline);
+	vkCmdBindDescriptorSets(info->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+													info->pipeline_layout, 0, NUM_DESCRIPTORS,
+													info->descriptor_sets, 0, NULL);
+
+	const VkDeviceSize offsets[1] = { 0 };
+	vkCmdBindVertexBuffers(info->cmd_buffer, 0, 1, &info->vertex_buffer.buffer, offsets);
+	
+	info->viewport.x = 0;
+	info->viewport.y = 0;
+	info->viewport.width = info->width;
+	info->viewport.height = info->height;
+	info->viewport.minDepth = 0.0f;
+	info->viewport.maxDepth = 1.0f;
+	vkCmdSetViewport(info->cmd_buffer, 0, 1, &info->viewport);
+
+	info->scissor.extent.width = info->width;
+	info->scissor.extent.height = info->height;
+	info->scissor.offset.x = 0;
+	info->scissor.offset.y = 0;
+	vkCmdSetScissor(info->cmd_buffer, 0, 1, &info->scissor);
+
+	vkCmdDraw(info->cmd_buffer, info->vertex_count, 1, 0, 0);
+	vkCmdEndRenderPass(info->cmd_buffer);
+
+	res = vkEndCommandBuffer(info->cmd_buffer);
+	CHECK_VK(res);
+
+	const VkCommandBuffer cmd_buffers[] = { info->cmd_buffer };
+
+	VkFenceCreateInfo fence_info;
+	VkFence draw_fence;
+	fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fence_info.pNext = NULL;
+	fence_info.flags = 0;
+	vkCreateFence(info->device, &fence_info, NULL, &draw_fence);
+
+	VkPipelineStageFlags pipe_stage_flags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	VkSubmitInfo submit_info[1] = {};
+	submit_info[0].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submit_info[0].pNext = NULL;
+	submit_info[0].waitSemaphoreCount = 1;
+	submit_info[0].pWaitSemaphores = &semaphore;
+	submit_info[0].pWaitDstStageMask = &pipe_stage_flags;
+	submit_info[0].commandBufferCount = 1;
+	submit_info[0].pCommandBuffers = cmd_buffers;
+	submit_info[0].signalSemaphoreCount = 0;
+	submit_info[0].pSignalSemaphores = NULL;
+
+	res = vkQueueSubmit(info->graphic_queue, 1, submit_info, draw_fence);
+	CHECK_VK(res);
+
+	VkPresentInfoKHR present;
+	present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	present.pNext = NULL;
+	present.swapchainCount = 1;
+	present.pSwapchains = &info->swapchain;
+	present.pImageIndices = &info->current_buffer;
+	present.pWaitSemaphores = NULL;
+	present.waitSemaphoreCount = 0;
+	present.pResults = NULL;
+
+	do {
+#define FENCE_TIMEOUT 100000000
+			res = vkWaitForFences(info->device, 1, &draw_fence, VK_TRUE, FENCE_TIMEOUT);
+	} while (res == VK_TIMEOUT);
+	CHECK_VK(res);
+
+	res = vkQueuePresentKHR(info->present_queue, &present);
+
+	vkDestroySemaphore(info->device, semaphore, NULL);
+	vkDestroyFence(info->device, draw_fence, NULL);
+
+	return res;
 }
