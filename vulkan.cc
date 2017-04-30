@@ -14,6 +14,8 @@
 #include <iostream>
 #include <memory>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -867,6 +869,68 @@ VkResult vulkan_create_render_pass(vulkan_info_t *info) {
 	return vkCreateRenderPass(info->device, &renderPassInfo, NULL, &info->render_pass);
 }
 
+struct shader_t {
+	uint32_t *bytes;
+	uint64_t length;
+};
+
+static bool load_shader(const char* path, shader_t *shader) {
+	int fd = open(path, O_RDONLY);
+	if (fd < 0)
+		return false;
+
+#ifdef LOG_VERBOSE
+	printf("[INFO] Loading shader: %s\n", path);
+#endif
+
+	uint64_t length = lseek(fd, 0, SEEK_END);
+	lseek(fd, 0, SEEK_SET);
+
+	uint32_t *bytes = new uint32_t[length / sizeof(uint32_t)];
+
+	uint64_t ret = read(fd, bytes, length);
+	close(fd);
+
+	shader->length = length / sizeof(uint32_t);
+	shader->bytes = bytes;
+
+	return ret > 0;
+}
+
+static VkResult vulkan_load_shaders(vulkan_info_t *info, uint32_t count,
+														 const char **paths, VkShaderStageFlagBits *flags) {
+	VkResult res = VK_SUCCESS;
+	info->shader_stages = new VkPipelineShaderStageCreateInfo[count];
+	if (info->shader_stages == NULL)
+		return VK_ERROR_OUT_OF_HOST_MEMORY;
+
+	for (uint32_t i = 0; i < count; i++) {
+		shader_t shader = { 0 };
+		if (!load_shader(paths[i], &shader))
+			return VK_INCOMPLETE;
+
+		info->shader_stages[i].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		info->shader_stages[i].pNext = NULL;
+		info->shader_stages[i].flags = 0;
+		info->shader_stages[i].stage = flags[i];
+		info->shader_stages[i].pName = "main";
+		info->shader_stages[i].pSpecializationInfo = NULL;
+
+		VkShaderModuleCreateInfo module_info = {};
+		module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+		module_info.pNext = NULL;
+		module_info.flags = 0;
+		module_info.codeSize = shader.length * sizeof(uint32_t);
+		module_info.pCode = shader.bytes;
+
+		res = vkCreateShaderModule(info->device, &module_info, NULL,
+															 &info->shader_stages[i].module);
+		delete[] shader.bytes;
+		CHECK_VK(res);
+	}
+	return res;
+}
+
 VkResult vulkan_initialize(vulkan_info_t *info) {
 	LOG("Initializing Vulkan...");
 	
@@ -912,6 +976,19 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	res = vulkan_create_render_pass(info);
 	CHECK_VK(res);
 	LOG("Render pass created.");
+
+#define NBR_SHADERS (2)
+	const char *shaders_paths[NBR_SHADERS] = {
+		"cube_vert.spv", "cube_frag.spv"
+	};
+
+	VkShaderStageFlagBits shaders_flags[NBR_SHADERS] = {
+		VK_SHADER_STAGE_VERTEX_BIT, VK_SHADER_STAGE_FRAGMENT_BIT
+	};
+
+	res = vulkan_load_shaders(info, NBR_SHADERS, shaders_paths, shaders_flags);
+	CHECK_VK(res);
+	LOG("Shaders loaded.");
 	
 	delete[] queue_info.family_props;
 
@@ -931,6 +1008,11 @@ static void vulkan_destroy_image_buffer(VkDevice device, image_buffer_t buffer) 
 }
 
 void vulkan_cleanup(vulkan_info_t *info) {
+	for (uint32_t i = 0; i < NBR_SHADERS; i++) {
+		vkDestroyShaderModule(info->device, info->shader_stages[i].module, NULL);
+	}
+	delete[] info->shader_stages;
+
 	vkDestroyRenderPass(info->device, info->render_pass, NULL);
 	vkDestroyDescriptorPool(info->device, info->descriptor_pool, NULL);
 	vkDestroyPipelineLayout(info->device, info->pipeline_layout, NULL);

@@ -98,7 +98,7 @@ struct vulkan_info_t {
 	
 	VkPipelineLayout pipeline_layout;
 	VkRenderPass render_pass;
-	VkPipelineShaderStageCreateInfo *_shader_stages;
+	VkPipelineShaderStageCreateInfo *shader_stages;
 	VkFramebuffer *framebuffers;
 	VkPipeline pipeline;
 	VkViewport viewport;
