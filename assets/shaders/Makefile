@@ -20,5 +20,5 @@ all: ${VERT_SHADERS:.vert=_vert.spv} ${FRAG_SHADERS:.frag=_frag.spv}
 	@$(CMD) $(FLAGS) -o $@ ${@:_frag.spv=.frag} | $(POST)
 
 clean:
-	$(RM) *.spv
+	@$(RM) *.spv
 #!/bin/sh
