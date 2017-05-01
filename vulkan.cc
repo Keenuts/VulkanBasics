@@ -29,6 +29,7 @@
 #include "stb_image.h"
 #include "vulkan.hh"
 #include "window.hh"
+#include "helpers.hh"
 
 
 #define LOG(msg) printf("[INFO] %s\n", (msg))
@@ -316,10 +317,6 @@ auto vkGetter(uint32_t *count, VTYPE **array, VkPhysicalDevice dev, VkSurfaceKHR
 	if (res != VK_SUCCESS)
 		delete[] *array;
 	return res;
-}
-
-static uint32_t clamp(uint32_t value, uint32_t min, uint32_t max) {
-	return value < min ? min : (value > max ? max : value);
 }
 
 static VkResult vulkan_set_extents(vulkan_info_t *info, VkSurfaceCapabilitiesKHR *caps) {
