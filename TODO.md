@@ -2,7 +2,7 @@
 - [x] Basic vertex lighted rendering
 - [ ] Solve ratio problems
 - [x] Load a simple obj model
-- [ ] Load a texture
+- [x] Load a texture
 - [ ] Display textured mesh
 - [ ] Shadow mapping
 - [ ] Multisampling
