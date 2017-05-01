@@ -187,6 +187,14 @@ static VkResult vulkan_create_command_pool(vulkan_info_t *info, uint32_t graphic
 	return VK_SUCCESS;
 }
 
+struct queue_creation_info_t {
+	uint32_t count;
+	uint32_t present_family_index;
+	uint32_t graphic_family_index;
+
+	VkQueueFamilyProperties *family_props;
+};
+
 static VkResult vulkan_create_device(vulkan_info_t *info,
 												queue_creation_info_t *queue_info) {
 	//initialize info.device

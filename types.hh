@@ -63,3 +63,4 @@ struct image_buffer_t {
 	VkDeviceMemory memory;
 	VkImageView view;
 };
+

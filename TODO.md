@@ -1,4 +1,6 @@
 # Basic Vulkan setup
+- [ ] Switch to exceptions
+- [ ] Template buffer creation (Factory class ?)
 - [x] Basic vertex lighted rendering
 - [ ] Solve ratio problems
 - [x] Load a simple obj model
@@ -10,4 +12,5 @@
 
 
 # Others
+- [ ] Replace logging system
 - [ ] Create my own bmp/png importer

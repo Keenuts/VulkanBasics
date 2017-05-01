@@ -1,19 +1,6 @@
-#define APP_SHORT_NAME "viewer"
-
-#include <X11/Xutil.h>
-#include <cassert>
-#include <csignal>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <iostream>
-#include <memory>
 #include <time.h>
-#include <unistd.h>
 
-#include <vulkan/vk_sdk_platform.h>
-#include <vulkan/vulkan.hpp>
-
+#include "helpers.hh"
 #include "objloader.hh"
 #include "stb_image.h"
 #include "vulkan.hh"
@@ -29,7 +16,9 @@
 #define FRAMERATE (60.0f)
 #define CLOCKS_PER_FRAME ((long int)((1.0F / FRAMERATE) * CLOCKS_PER_SEC))
 
+//This main is used as a draft, don't worry
 int main(int argc, char** argv) {
+
 	//=========== VULKAN INITIALIZATION
 	vulkan_info_t vulkan_info = { 0 };
 	vulkan_info.width = 500;
