@@ -6,12 +6,12 @@ CPPFLAGS= -I $(VULKAN_SDK)/include
 
 LDLIBS= -L $(VULKAN_SDK)/lib `pkg-config --static --libs $(LIBS)` -lvulkan
 
-OBJ=viewer.o vulkan.o window.o objloader.o vulkan_render.o
+OBJ=viewer.o vulkan.o window.o objloader.o vulkan_render.o stb_image.o
 
 release: CXXFLAGS+=-O3
 release: viewer
 
-debug: CXXFLAGS+=-DLOG_VERBOSE -O0 -Werror
+debug: CXXFLAGS+= -DDEBUG -O0 -Werror
 debug: viewer
 
 shaders:
