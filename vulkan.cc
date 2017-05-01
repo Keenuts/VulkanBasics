@@ -26,8 +26,9 @@
 #include <xcb/xcb.h>
 
 
-#include "window.hh"
+#include "stb_image.h"
 #include "vulkan.hh"
+#include "window.hh"
 
 
 #define LOG(msg) printf("[INFO] %s\n", (msg))
@@ -88,7 +89,7 @@ static VkResult vulkan_startup(vulkan_info_t *info) {
 	extension_names.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
 	extension_names.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 
-#ifdef LOG_VERBOSE
+#ifdef DEBUG
 	validation_layers.push_back("VK_LAYER_LUNARG_standard_validation");
 	validation_layers.push_back("VK_LAYER_LUNARG_swapchain");
 	validation_layers.push_back("VK_LAYER_LUNARG_monitor");
@@ -97,13 +98,15 @@ static VkResult vulkan_startup(vulkan_info_t *info) {
 	validation_layers.push_back("VK_LAYER_LUNARG_screenshot");
 	validation_layers.push_back("VK_LAYER_LUNARG_object_tracker");
 	validation_layers.push_back("VK_LAYER_LUNARG_parameter_validation");
-	validation_layers.push_back("VK_LAYER_RENDERDOC_Capture");
+	//validation_layers.push_back("VK_LAYER_RENDERDOC_Capture");
 	validation_layers.push_back("VK_LAYER_GOOGLE_unique_objects");
 	validation_layers.push_back("VK_LAYER_GOOGLE_threading");
 
+# ifdef LOG_VERBOSE
 	printf("[DEBUG] Required layers:\n");
 	for (const char* s : validation_layers)
 		printf("[DEBUG]\t\t%s\n", s);
+# endif
 #endif
 
 	VkInstanceCreateInfo create_info = {
@@ -1263,6 +1266,76 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	LOG("Vulkan initialized.");
 	return VK_SUCCESS;
 }
+
+VkResult vulkan_create_texture(vulkan_info_t *info, texture_t *tex) {
+	VkResult res = VK_SUCCESS;
+
+	VkImageCreateInfo image_info = {};
+	image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	image_info.pNext = NULL;
+	image_info.flags = 0;
+	image_info.imageType = VK_IMAGE_TYPE_2D;
+	image_info.extent.width = tex->width;
+	image_info.extent.height = tex->height;
+	image_info.extent.depth = 1;
+	image_info.mipLevels = 1;
+	image_info.arrayLayers = 1;
+	image_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+	image_info.tiling = VK_IMAGE_TILING_LINEAR;
+	image_info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
+	image_info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+
+	res = vkCreateImage(info->device, &image_info, NULL, &tex->image);
+	CHECK_VK(res);
+
+	VkMemoryRequirements mem_reqs;
+	vkGetImageMemoryRequirements(info->device, tex->image, &mem_reqs);
+
+	VkMemoryAllocateInfo alloc_info = {};
+	alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	alloc_info.pNext = NULL;
+	alloc_info.memoryTypeIndex = 0;
+	alloc_info.allocationSize = mem_reqs.size;
+	tex->size = mem_reqs.size;
+	bool success = find_memory_type_index(info, mem_reqs.memoryTypeBits,
+																				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+																				 | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+																				&alloc_info.memoryTypeIndex);
+	if (!success)
+		return VK_INCOMPLETE;
+	res = vkAllocateMemory(info->device, &alloc_info, NULL, &tex->memory);
+	CHECK_VK(res);
+	return vkBindImageMemory(info->device, tex->image, tex->memory, 0);
+}
+
+VkResult vulkan_update_texture(vulkan_info_t *info, texture_t *tex, stbi_uc* data) {
+	VkResult res = VK_SUCCESS;
+	void *ptr = NULL;
+	res = vkMapMemory(info->device, tex->memory, 0, tex->size, 0, &ptr);
+	CHECK_VK(res);
+
+	VkImageSubresource subresource = {};
+	subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	subresource.mipLevel = 0;
+	subresource.arrayLayer = 0;
+
+	VkSubresourceLayout layout;
+	vkGetImageSubresourceLayout(info->device, tex->image, &subresource, &layout);
+
+	if (layout.rowPitch == tex->width * 4)
+		memcpy(ptr, data, tex->size);
+	else {
+		uint8_t *bytes = reinterpret_cast<uint8_t*>(data);
+		for (uint32_t y = 0; y < tex->height; y++)
+			memcpy(&bytes[y * layout.rowPitch], &data[y * tex->width * 4], tex->width * 4);
+	}
+
+	vkUnmapMemory(info->device, tex->memory);
+	return res;
+}
+
 
 //===== CLEAN FUNCTIONS
 

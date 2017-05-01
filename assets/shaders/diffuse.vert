@@ -25,6 +25,6 @@ void main()
 	mat4 MVP = udata.clip * udata.projection * udata.view * udata.model;
 
 	color_out = vec4(0.8, 0.9, 0.9, 1.0);
-	normal_out = udata.model * normal;
+	normal_out = (udata.model * normal.xyzz).xyz;
 	gl_Position = MVP * vec4(position, 1.0);
 }

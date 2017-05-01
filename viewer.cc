@@ -1,5 +1,4 @@
 #define APP_SHORT_NAME "viewer"
-#define STB_IMAGE_IMPLEMENTATION
 
 #include <X11/Xutil.h>
 #include <cassert>
@@ -30,7 +29,6 @@
 #define FRAMERATE (60.0f)
 #define CLOCKS_PER_FRAME ((long int)((1.0F / FRAMERATE) * CLOCKS_PER_SEC))
 
-
 int main(int argc, char** argv) {
 	//=========== VULKAN INITIALIZATION
 	vulkan_info_t vulkan_info = { 0 };
@@ -51,11 +49,16 @@ int main(int argc, char** argv) {
 	}
 
 	texture_t texture = { 0 };
-	stbi_uc *pixels = stbi_load(MESH_DIFFUSE, &texture.width,
-															&texture.height, &texture.channels,
+	stbi_uc *pixels = stbi_load(MESH_DIFFUSE, (int32_t*)&texture.width,
+															(int32_t*)&texture.height, (int32_t*)&texture.channels,
 															STBI_rgb_alpha);
 	if (!pixels)
 		return 1;
+	res = vulkan_create_texture(&vulkan_info, &texture);
+	CHECK_VK(res);
+	res = vulkan_update_texture(&vulkan_info, &texture, pixels);
+	stbi_image_free(pixels);
+
 	printf("[INFO] Loading a texture %dx%d\n", texture.width, texture.height);
 
 	const char *shaders_paths[SHADER_COUNT] = { VERT_SHADER, FRAG_SHADER };
@@ -84,7 +87,7 @@ int main(int argc, char** argv) {
 	//=========== RENDERING
 	
 	vulkan_frame_info_t frame_info = { 0 };
-	frame_info.clear_color = { 1.0, 1.0, 1.0 };
+	frame_info.clear_color = { 0.1, 0.1, 0.1 };
 	frame_info.vertex_count = vulkan_info.vertex_count;
 	frame_info.vertex_buffer = vulkan_info.vertex_buffer;
 	frame_info.command = vulkan_info.cmd_buffer;

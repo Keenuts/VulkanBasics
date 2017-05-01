@@ -31,10 +31,12 @@ struct model_t {
 };
 
 struct texture_t {
-	int32_t width;
-	int32_t height;
-	int32_t channels;
+	uint32_t width;
+	uint32_t height;
+	uint32_t channels;
 	VkDeviceSize size;
+	VkImage image;
+	VkDeviceMemory memory;
 };
 
 //unused
