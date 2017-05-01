@@ -1,11 +1,12 @@
 # Basic Vulkan setup
-- Solve ratio problems
+[x] Basic vertex lighted rendering
+[ ] Solve ratio problems
+[x] Load a simple obj model
+[ ] Load a texture
+[ ] Display textured mesh
+[ ] Shadow mapping
+[ ] Multisampling
+[ ] Ocean porting
 
-# Extended features
-- Load a simple obj model
-- Load a texture
-- Display textured mesh
-
-# Ideas : Benchmark ?
-- Make a GL sample obj reader ?
-- Bench on vtx amount, state changes, shader passes, data transfer ?
+# Others
+[ ] Create my own bmp/png importer
