@@ -10,8 +10,7 @@ void main() {
 	vec3 one = vec3(1);
 	vec3 light_direction = normalize(vec3(0.3, 0.8, 0.1));
 
-	vec4 color = clamp(vec4(mix(in_normal.xyz, one, 0.3), 1.0), 0.0, 1.0);
-	out_color.xyz = color.xyz * dot(in_normal.xyz, light_direction);
-
+	out_color.rgb = vec3(0.5,0.49, 0.5);
+	out_color.rgb *= clamp(dot(in_normal.xyz, light_direction), 0.0, 1.0);
 	out_color = clamp(out_color, 0.0, 1.0);
 }

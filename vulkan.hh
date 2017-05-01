@@ -36,25 +36,6 @@
 	if (res != VK_SUCCESS)   																	\
 		return res;
 
-struct swapchain_buffer_t {
-	VkImage image;
-	VkImageView view;
-	VkFramebuffer framebuffer;
-};
-
-struct data_buffer_t {
-	VkDescriptorBufferInfo descriptor;
-	VkDeviceMemory memory;
-	VkBuffer buffer;
-};
-
-struct image_buffer_t {
-	VkFormat format;
-	VkImage image;
-	VkDeviceMemory memory;
-	VkImageView view;
-};
-
 struct queue_creation_info_t {
 	uint32_t count;
 	uint32_t present_family_index;
@@ -160,7 +141,13 @@ VkResult vulkan_create_pipeline(vulkan_info_t *info);
 VkResult vulkan_begin_command_buffer(vulkan_info_t *info);
 VkResult vulkan_update_vertex_buffer(vulkan_info_t *info, data_buffer_t *buffer,
 																		 vertex_t *vertices, uint32_t count);
+VkResult vulkan_update_uniform_buffer(vulkan_info_t *info, scene_info_t *payload);
 VkResult vulkan_render_frame(vulkan_info_t *info);
 
 void vulkan_unload_shaders(vulkan_info_t *info, uint32_t count);
 void vulkan_cleanup(vulkan_info_t *info);
+
+VkResult set_image_layout(VkCommandBuffer *cmd_buffer, VkImage image,
+																 VkImageAspectFlags aspects,
+																 VkImageLayout old_layout,
+																 VkImageLayout new_layout);

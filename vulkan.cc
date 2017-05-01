@@ -97,7 +97,7 @@ static VkResult vulkan_startup(vulkan_info_t *info) {
 	validation_layers.push_back("VK_LAYER_LUNARG_screenshot");
 	validation_layers.push_back("VK_LAYER_LUNARG_object_tracker");
 	validation_layers.push_back("VK_LAYER_LUNARG_parameter_validation");
-	//validation_layers.push_back("VK_LAYER_RENDERDOC_Capture");
+	validation_layers.push_back("VK_LAYER_RENDERDOC_Capture");
 	validation_layers.push_back("VK_LAYER_GOOGLE_unique_objects");
 	validation_layers.push_back("VK_LAYER_GOOGLE_threading");
 
@@ -438,7 +438,8 @@ static VkResult vulkan_create_command_buffer(vulkan_info_t *info)
 	return vkAllocateCommandBuffers(info->device, &cmd, &info->cmd_buffer);
 }
 
-static VkResult set_image_layout(VkCommandBuffer *cmd_buffer, VkImage image,
+//TODO: move to an helper file ?
+VkResult set_image_layout(VkCommandBuffer *cmd_buffer, VkImage image,
 																 VkImageAspectFlags aspects,
 																 VkImageLayout old_layout,
 																 VkImageLayout new_layout) {
@@ -677,46 +678,28 @@ static VkResult vulkan_create_uniform_buffer(vulkan_info_t *info, uint32_t size)
 																				&alloc_info.memoryTypeIndex);
 	if (!success)
 		return VK_INCOMPLETE;
-	return vkAllocateMemory(info->device, &alloc_info, NULL, &info->uniform_buffer.memory);
-}
 
-static VkResult initialize_uniform_buffer(vulkan_info_t *info) {
-	VkResult res = VK_SUCCESS;
-
-	glm::mat4 projection_matrix = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 1000.0f);
-	glm::vec3 camera = glm::vec3(3, 5, 10);
-	glm::vec3 origin = glm::vec3(0, 0, 0);
-	glm::vec3 up = glm::vec3(0, 1, 0);
-
-	glm::mat4 view_matrix = glm::lookAt(camera, origin, up);
-	glm::mat4 model_matrix = glm::mat4(1.0f);
-
-	glm::mat4 clip_matrix = glm::mat4(
-		1.0f, 0.0f, 0.0f, 0.0f,
-		0.0f, -1.0f, 0.0f, 0.0f,
-		0.0f, 0.0f, 0.5f, 0.0f,
-		0.0f, 0.0f, 0.5f, 1.0f);
-	
-	glm::mat4 payload = clip_matrix * projection_matrix * view_matrix * model_matrix;
-	
-	VkMemoryRequirements mem_reqs;
-	vkGetBufferMemoryRequirements(info->device, info->uniform_buffer.buffer, &mem_reqs);
-
-	uint8_t *p_data = NULL;
-	res = vkMapMemory(info->device, info->uniform_buffer.memory, 0, mem_reqs.size, 0,
-										(void**)&p_data);
-	CHECK_VK(res);
-
-	memcpy(p_data, &payload, sizeof(payload));
-	vkUnmapMemory(info->device, info->uniform_buffer.memory);
-	res = vkBindBufferMemory(info->device, info->uniform_buffer.buffer,
-													 info->uniform_buffer.memory, 0);
+	res = vkAllocateMemory(info->device, &alloc_info, NULL, &info->uniform_buffer.memory);
 	CHECK_VK(res);
 
 	info->uniform_buffer.descriptor.buffer = info->uniform_buffer.buffer;
 	info->uniform_buffer.descriptor.offset = 0;
-  info->uniform_buffer.descriptor.range = sizeof(payload); 
-	return VK_SUCCESS;	
+  info->uniform_buffer.descriptor.range = size; 
+	res = vkBindBufferMemory(info->device, info->uniform_buffer.buffer,
+													 	info->uniform_buffer.memory, 0);
+	return res;
+}
+
+VkResult vulkan_update_uniform_buffer(vulkan_info_t *info, scene_info_t *payload) {
+	VkResult res = VK_SUCCESS;
+
+	void *data = NULL;
+	res = vkMapMemory(info->device, info->uniform_buffer.memory, 0, sizeof(payload), 0,
+										(void**)&data);
+	CHECK_VK(res);
+	memcpy(data, payload, info->uniform_buffer.descriptor.range);
+	vkUnmapMemory(info->device, info->uniform_buffer.memory);
+	return res;
 }
 
 static VkResult vulkan_create_pipeline_layout(vulkan_info_t *info) {
@@ -783,7 +766,6 @@ static VkResult vulkan_create_descriptors(vulkan_info_t *info) {
 	alloc_info[0].descriptorSetCount = NUM_DESCRIPTORS;
 	alloc_info[0].pSetLayouts = info->descriptor_layouts;
 	
-	//TODO: compile time allocation ?
 	info->descriptor_sets = new VkDescriptorSet[NUM_DESCRIPTORS];
 	res = vkAllocateDescriptorSets(info->device, alloc_info, info->descriptor_sets);
 	CHECK_VK(res);
@@ -1061,6 +1043,22 @@ static VkResult vulkan_create_simple_vertex_buffer(vulkan_info_t *info) {
 	return res;
 }
 
+void vulkan_setup_viewport(vulkan_info_t *info) {
+	info->viewport.x = 0;
+	info->viewport.y = 0;
+	info->viewport.width = info->width;
+	info->viewport.height = info->height;
+	info->viewport.minDepth = 0.0f;
+	info->viewport.maxDepth = 1.0f;
+}
+
+void vulkan_setup_scissor(vulkan_info_t *info) {
+	info->scissor.extent.width = info->width;
+	info->scissor.extent.height = info->height;
+	info->scissor.offset.x = 0;
+	info->scissor.offset.y = 0;
+}
+
 VkResult vulkan_create_pipeline(vulkan_info_t *info) {
 	VkDynamicState dynamic_state_enable[VK_DYNAMIC_STATE_RANGE_SIZE];
 	memset(dynamic_state_enable, 0, sizeof dynamic_state_enable);
@@ -1234,9 +1232,7 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 
 	//END STATIC ZONE
 
-	res = vulkan_create_uniform_buffer(info, sizeof(glm::mat4));
-	CHECK_VK(res);
-	res = initialize_uniform_buffer(info);
+	res = vulkan_create_uniform_buffer(info, sizeof(scene_info_t));
 	LOG("Uniform buffer initialized");
 	CHECK_VK(res);
 
@@ -1249,6 +1245,9 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	res = vulkan_create_render_pass(info);
 	CHECK_VK(res);
 	LOG("Render pass created.");
+
+	vulkan_setup_scissor(info);
+	vulkan_setup_viewport(info);
 
 	//SHADERS OLD POSITION
 	
@@ -1263,140 +1262,6 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 
 	LOG("Vulkan initialized.");
 	return VK_SUCCESS;
-}
-
-//===== RENDERING FUNCTION
-
-VkResult vulkan_begin_command_buffer(vulkan_info_t *info) {
-	VkCommandBufferBeginInfo cmd_info = {};
-	cmd_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	cmd_info.pNext = NULL;
-	cmd_info.flags = 0;
-	cmd_info.pInheritanceInfo = NULL;
-
-	return vkBeginCommandBuffer(info->cmd_buffer, &cmd_info);
-}
-
-static VkResult vulkan_create_semaphore(vulkan_info_t *info, VkSemaphore *semaphore) {
-	VkSemaphoreCreateInfo create_info;
-	create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-	create_info.pNext = NULL;
-	create_info.flags = 0;
-	//Seriously ?
-	
-	return vkCreateSemaphore(info->device, &create_info, NULL, semaphore);
-}
-
-VkResult vulkan_render_frame(vulkan_info_t *info) {
-	VkResult res = VK_SUCCESS;
-	VkClearValue clear_values[2];
-	clear_values[0].color = {0.2f, 0.2f, 0.2f, 0.2f };
-	clear_values[1].depthStencil.depth = 1.0f;
-	clear_values[1].depthStencil.stencil = 0;
-
-	VkSemaphore semaphore;
-	res = vulkan_create_semaphore(info, &semaphore);
-	CHECK_VK(res);
-
-	res = vkAcquireNextImageKHR(info->device, info->swapchain, UINT64_MAX, semaphore,
-															VK_NULL_HANDLE, &info->current_buffer);
-	CHECK_VK(res);
-	
-	set_image_layout(&info->cmd_buffer,
-								 info->swapchain_buffers[info->current_buffer].image,
-								 VK_IMAGE_ASPECT_COLOR_BIT,
-								 VK_IMAGE_LAYOUT_UNDEFINED,
-								 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-	VkRenderPassBeginInfo pass_begin_info = {};
-	pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	pass_begin_info.pNext = NULL;
-	pass_begin_info.renderPass = info->render_pass;
-	pass_begin_info.framebuffer = info->framebuffers[info->current_buffer];
-	pass_begin_info.renderArea.offset.x = 0;
-	pass_begin_info.renderArea.offset.y = 0;
-	pass_begin_info.renderArea.extent.width = info->width;
-	pass_begin_info.renderArea.extent.height = info->height;
-	pass_begin_info.clearValueCount = 2;
-	pass_begin_info.pClearValues = clear_values;
-	
-	vkCmdBeginRenderPass(info->cmd_buffer, &pass_begin_info,
-											 VK_SUBPASS_CONTENTS_INLINE);
-	vkCmdBindPipeline(info->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-										info->pipeline);
-	vkCmdBindDescriptorSets(info->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-													info->pipeline_layout, 0, NUM_DESCRIPTORS,
-													info->descriptor_sets, 0, NULL);
-
-	const VkDeviceSize offsets[1] = { 0 };
-	vkCmdBindVertexBuffers(info->cmd_buffer, 0, 1, &info->vertex_buffer.buffer, offsets);
-	
-	info->viewport.x = 0;
-	info->viewport.y = 0;
-	info->viewport.width = info->width;
-	info->viewport.height = info->height;
-	info->viewport.minDepth = 0.0f;
-	info->viewport.maxDepth = 1.0f;
-	vkCmdSetViewport(info->cmd_buffer, 0, 1, &info->viewport);
-
-	info->scissor.extent.width = info->width;
-	info->scissor.extent.height = info->height;
-	info->scissor.offset.x = 0;
-	info->scissor.offset.y = 0;
-	vkCmdSetScissor(info->cmd_buffer, 0, 1, &info->scissor);
-
-	vkCmdDraw(info->cmd_buffer, info->vertex_count, 1, 0, 0);
-	vkCmdEndRenderPass(info->cmd_buffer);
-
-	res = vkEndCommandBuffer(info->cmd_buffer);
-	CHECK_VK(res);
-
-	const VkCommandBuffer cmd_buffers[] = { info->cmd_buffer };
-
-	VkFenceCreateInfo fence_info;
-	VkFence draw_fence;
-	fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-	fence_info.pNext = NULL;
-	fence_info.flags = 0;
-	vkCreateFence(info->device, &fence_info, NULL, &draw_fence);
-
-	VkPipelineStageFlags pipe_stage_flags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	VkSubmitInfo submit_info[1] = {};
-	submit_info[0].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submit_info[0].pNext = NULL;
-	submit_info[0].waitSemaphoreCount = 1;
-	submit_info[0].pWaitSemaphores = &semaphore;
-	submit_info[0].pWaitDstStageMask = &pipe_stage_flags;
-	submit_info[0].commandBufferCount = 1;
-	submit_info[0].pCommandBuffers = cmd_buffers;
-	submit_info[0].signalSemaphoreCount = 0;
-	submit_info[0].pSignalSemaphores = NULL;
-
-	res = vkQueueSubmit(info->graphic_queue, 1, submit_info, draw_fence);
-	CHECK_VK(res);
-
-	VkPresentInfoKHR present;
-	present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-	present.pNext = NULL;
-	present.swapchainCount = 1;
-	present.pSwapchains = &info->swapchain;
-	present.pImageIndices = &info->current_buffer;
-	present.pWaitSemaphores = NULL;
-	present.waitSemaphoreCount = 0;
-	present.pResults = NULL;
-
-	do {
-#define FENCE_TIMEOUT 100000000
-			res = vkWaitForFences(info->device, 1, &draw_fence, VK_TRUE, FENCE_TIMEOUT);
-	} while (res == VK_TIMEOUT);
-	CHECK_VK(res);
-
-	res = vkQueuePresentKHR(info->present_queue, &present);
-
-	vkDestroySemaphore(info->device, semaphore, NULL);
-	vkDestroyFence(info->device, draw_fence, NULL);
-
-	return res;
 }
 
 //===== CLEAN FUNCTIONS

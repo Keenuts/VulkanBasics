@@ -18,6 +18,7 @@
 #include "objloader.hh"
 #include "stb_image.h"
 #include "vulkan.hh"
+#include "vulkan_render.hh"
 
 #define MESH_PATH "assets/df9/model.obj"
 #define MESH_DIFFUSE "assets/df9/tex_albedo.jpg"
@@ -26,10 +27,8 @@
 #define FRAG_SHADER "assets/shaders/diffuse_frag.spv"
 #define VERT_SHADER "assets/shaders/diffuse_vert.spv"
 
-#define CLOCKS_PER_TICK (CLOCKS_PER_SEC / 1000000.0f)
 #define FRAMERATE (60.0f)
-#define CLOCKS_PER_FRAME (CLOCKS_PER_SEC / FRAMERATE)
-#define TICKS_PER_FRAME (CLOCKS_PER_TICK / CLOCKS_PER_FRAME)
+#define CLOCKS_PER_FRAME ((long int)((1.0F / FRAMERATE) * CLOCKS_PER_SEC))
 
 
 int main(int argc, char** argv) {
@@ -83,17 +82,57 @@ int main(int argc, char** argv) {
 	printf("[INFO] Done.\n");
 
 	//=========== RENDERING
-	clock_t last_tick = clock() / CLOCKS_PER_TICK;
-	for (uint32_t i = 0; i < 1200; i++) {
-		res = vulkan_begin_command_buffer(&vulkan_info);
-		CHECK_VK(res);
-		res = vulkan_render_frame(&vulkan_info);
-		CHECK_VK(res);
+	
+	vulkan_frame_info_t frame_info = { 0 };
+	frame_info.clear_color = { 1.0, 1.0, 1.0 };
+	frame_info.vertex_count = vulkan_info.vertex_count;
+	frame_info.vertex_buffer = vulkan_info.vertex_buffer;
+	frame_info.command = vulkan_info.cmd_buffer;
 
-		clock_t current_tick = clock() / CLOCKS_PER_TICK;
-		clock_t early = (current_tick - last_tick - TICKS_PER_FRAME);
-		if (early > 0) { usleep(early * 25); }
-		last_tick = current_tick;
+
+	glm::vec3 camera = glm::vec3(3, 5, 10);
+	glm::vec3 origin = glm::vec3(0, 0, 0);
+	glm::vec3 up = glm::vec3(0, 1, 0);
+
+	scene_info_t scene = { };
+	scene.clip = glm::mat4(
+		1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, -1.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 0.5f, 0.0f,
+		0.0f, 0.0f, 0.5f, 1.0f
+	);
+
+	scene.model = glm::mat4(1.0f);
+	scene.view = glm::lookAt(camera, origin, up);
+	scene.projection = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 1000.0f);
+
+	res = vulkan_update_uniform_buffer(&vulkan_info, &scene);
+	if (!load_model(MESH_PATH, &model)) {
+		printf("[ERROR] Unable to update uniform buffer.\n");
+		return 1;
+	}
+	printf("[INFO] Starting render loop.\n");
+
+	float delta_time = 1.0f / 1000.0;
+	for (uint32_t i = 0; i < 300; i++) {
+		clock_t start_tick = clock();
+
+		float angle = 50.0f;
+#define DEG2RAD (0.20943951023f)
+
+		scene.model = glm::rotate(scene.model, angle * delta_time * DEG2RAD, glm::vec3(0,1,0));
+		vulkan_update_uniform_buffer(&vulkan_info, &scene);
+
+		res = render_create_cmd(&vulkan_info, &frame_info);
+		CHECK_VK(res);
+		res = render_submit(&vulkan_info, &frame_info);
+		CHECK_VK(res);
+		render_destroy(&vulkan_info, &frame_info);
+
+		clock_t end_tick = clock();
+
+		clock_t early_time = CLOCKS_PER_FRAME - (end_tick - start_tick);
+		usleep(early_time);
 	}
 
 	vulkan_unload_shaders(&vulkan_info, SHADER_COUNT);

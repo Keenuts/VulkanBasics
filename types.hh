@@ -7,11 +7,8 @@
 struct scene_info_t {
 	glm::mat4 clip;
 	glm::mat4 model;
+	glm::mat4 view;
 	glm::mat4 projection;
-
-	glm::vec3 camera;
-	glm::vec3 origin;
-	glm::vec3 up;
 };
 
 struct v2_t {
@@ -40,7 +37,27 @@ struct texture_t {
 	VkDeviceSize size;
 };
 
+//unused
 struct object_info_t {
 	glm::mat4 mat;
 	model_t model;
+};
+
+struct swapchain_buffer_t {
+	VkImage image;
+	VkImageView view;
+	VkFramebuffer framebuffer;
+};
+
+struct data_buffer_t {
+	VkDescriptorBufferInfo descriptor;
+	VkDeviceMemory memory;
+	VkBuffer buffer;
+};
+
+struct image_buffer_t {
+	VkFormat format;
+	VkImage image;
+	VkDeviceMemory memory;
+	VkImageView view;
 };
