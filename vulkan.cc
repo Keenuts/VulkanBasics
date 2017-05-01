@@ -149,7 +149,6 @@ static VkResult vulkan_initialize_devices(vulkan_info_t *info) {
 	}
 #endif
 
-
 	delete[] phys_devices;
 	vkGetPhysicalDeviceMemoryProperties(info->physical_device, &info->memory_properties);
 	vkGetPhysicalDeviceProperties(info->physical_device, &info->device_properties);
@@ -685,7 +684,7 @@ static VkResult initialize_uniform_buffer(vulkan_info_t *info) {
 	VkResult res = VK_SUCCESS;
 
 	glm::mat4 projection_matrix = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 1000.0f);
-	glm::vec3 camera = glm::vec3(0, 100, 200);
+	glm::vec3 camera = glm::vec3(3, 5, 10);
 	glm::vec3 origin = glm::vec3(0, 0, 0);
 	glm::vec3 up = glm::vec3(0, 1, 0);
 
@@ -776,9 +775,6 @@ static VkResult vulkan_create_descriptor_pool(vulkan_info_t *info) {
 
 static VkResult vulkan_create_descriptors(vulkan_info_t *info) {
 	VkResult res = VK_SUCCESS;
-
-	res = vulkan_create_descriptor_pool(info);
-	CHECK_VK(res);
 
 	VkDescriptorSetAllocateInfo alloc_info[1];
 	alloc_info[0].sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -893,7 +889,7 @@ static bool load_shader(const char* path, shader_t *shader) {
 	return ret > 0;
 }
 
-static VkResult vulkan_load_shaders(vulkan_info_t *info, uint32_t count,
+VkResult vulkan_load_shaders(vulkan_info_t *info, uint32_t count,
 														 const char **paths, VkShaderStageFlagBits *flags) {
 	VkResult res = VK_SUCCESS;
 	info->shader_stages = new VkPipelineShaderStageCreateInfo[count];
@@ -924,6 +920,7 @@ static VkResult vulkan_load_shaders(vulkan_info_t *info, uint32_t count,
 		delete[] shader.bytes;
 		CHECK_VK(res);
 	}
+	info->shader_stages_count = count;
 	return res;
 }
 
@@ -1064,7 +1061,7 @@ static VkResult vulkan_create_simple_vertex_buffer(vulkan_info_t *info) {
 	return res;
 }
 
-static VkResult vulkan_create_pipeline(vulkan_info_t *info) {
+VkResult vulkan_create_pipeline(vulkan_info_t *info) {
 	VkDynamicState dynamic_state_enable[VK_DYNAMIC_STATE_RANGE_SIZE];
 	memset(dynamic_state_enable, 0, sizeof dynamic_state_enable);
 
@@ -1178,7 +1175,7 @@ static VkResult vulkan_create_pipeline(vulkan_info_t *info) {
 	pipeline.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	pipeline.pNext = NULL;
 	pipeline.flags = 0;
-	pipeline.stageCount = 2;
+	pipeline.stageCount = info->shader_stages_count;
 	pipeline.pStages = info->shader_stages;
 	pipeline.pVertexInputState = &vtx_input;
 	pipeline.pInputAssemblyState = &input_assembly;
@@ -1220,24 +1217,32 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	CHECK_VK(res);
 	res = vulkan_create_queues(info, &queue_info);
 	CHECK_VK(res);
-	res = vulkan_create_swapchain(info);
-	CHECK_VK(res);
 	res = vulkan_create_command_buffer(info);
 	CHECK_VK(res);
 	LOG("Command buffer initialized.");
+	res = vulkan_create_swapchain(info);
+	CHECK_VK(res);
 	res = vulkan_initialize_swachain_images(info);
 	CHECK_VK(res);
 	LOG("Swapchain initialized");
 	res = vulkan_create_depth_buffer(info);
 	CHECK_VK(res);
+	LOG("Depth buffer initialized");
+	res = vulkan_create_descriptor_pool(info);
+	CHECK_VK(res);
+	LOG("Descriptor pool initialized");
+
+	//END STATIC ZONE
+
 	res = vulkan_create_uniform_buffer(info, sizeof(glm::mat4));
 	CHECK_VK(res);
-	//TODO: Later, let this take better arguments, think of update routine, etc
 	res = initialize_uniform_buffer(info);
 	LOG("Uniform buffer initialized");
 	CHECK_VK(res);
+
 	res = vulkan_create_pipeline_layout(info);
 	CHECK_VK(res);
+	LOG("Pipeline layout initialized.");
 	res = vulkan_create_descriptors(info);
 	CHECK_VK(res);
 	LOG("Descriptors initialized.");
@@ -1245,25 +1250,14 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	CHECK_VK(res);
 	LOG("Render pass created.");
 
-#define NBR_SHADERS (2)
-	const char *shaders_paths[NBR_SHADERS] = {
-		"cube_vert.spv", "cube_frag.spv"
-	};
-
-	VkShaderStageFlagBits shaders_flags[NBR_SHADERS] = {
-		VK_SHADER_STAGE_VERTEX_BIT, VK_SHADER_STAGE_FRAGMENT_BIT
-	};
-
-	res = vulkan_load_shaders(info, NBR_SHADERS, shaders_paths, shaders_flags);
-	CHECK_VK(res);
-	LOG("Shaders loaded.");
+	//SHADERS OLD POSITION
+	
 	res = vulkan_create_framebuffers(info);
 	CHECK_VK(res);
+	LOG("Framebuffers initialized.");
 	res = vulkan_create_vertex_bindings(info);
 	CHECK_VK(res);
-	res = vulkan_create_pipeline(info);
-	LOG("Pipeline initialized.");
-	CHECK_VK(res);
+	LOG("Vertex bindings done.");
 	
 	delete[] queue_info.family_props;
 
@@ -1271,57 +1265,7 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	return VK_SUCCESS;
 }
 
-static void vulkan_destroy_framebuffers(VkDevice d, VkFramebuffer *b, uint32_t c) {
-	for (uint32_t i = 0; i < c; i++)
-		vkDestroyFramebuffer(d, b[i], NULL);
-	delete[] b;
-}
-
-static void vulkan_destroy_data_buffer(VkDevice device, data_buffer_t buffer) {
-	vkDestroyBuffer(device, buffer.buffer, NULL);
-	vkFreeMemory(device, buffer.memory, NULL);
-}
-
-static void vulkan_destroy_image_buffer(VkDevice device, image_buffer_t buffer) {
-	vkDestroyImageView(device, buffer.view, NULL);
-	vkDestroyImage(device, buffer.image, NULL);
-	vkFreeMemory(device, buffer.memory, NULL);
-}
-
-void vulkan_cleanup(vulkan_info_t *info) {
-	vkDestroyPipeline(info->device, info->pipeline, NULL);
-	vulkan_destroy_data_buffer(info->device, info->vertex_buffer);
-	vulkan_destroy_framebuffers(info->device, info->framebuffers,
-															info->swapchain_images_count);
-
-	for (uint32_t i = 0; i < NBR_SHADERS; i++)
-		vkDestroyShaderModule(info->device, info->shader_stages[i].module, NULL);
-	delete[] info->shader_stages;
-
-	vkDestroyRenderPass(info->device, info->render_pass, NULL);
-	vkDestroyDescriptorPool(info->device, info->descriptor_pool, NULL);
-	vkDestroyPipelineLayout(info->device, info->pipeline_layout, NULL);
-
-	for (uint32_t i = 0; i < NUM_DESCRIPTORS; i++)
-		vkDestroyDescriptorSetLayout(info->device, info->descriptor_layouts[i], NULL);
-	delete[] info->descriptor_layouts;
-
-	vulkan_destroy_data_buffer(info->device, info->uniform_buffer);
-	vulkan_destroy_image_buffer(info->device, info->depth_buffer);	
-
-	for (uint32_t i = 0; i < info->swapchain_images_count; i++)
-		vkDestroyImageView(info->device, info->swapchain_buffers[i].view, NULL);
-	delete[] info->swapchain_buffers;
-
-	vkDestroySwapchainKHR(info->device, info->swapchain, NULL);
-	vkFreeCommandBuffers(info->device, info->cmd_pool, 1, &info->cmd_buffer);
-	vkDestroyCommandPool(info->device, info->cmd_pool, NULL);
-	vkDeviceWaitIdle(info->device);
-	vkDestroyDevice(info->device, NULL);
-	vkDestroySurfaceKHR(info->instance, info->surface, NULL);
-	destroy_window(&info->window);
-	vkDestroyInstance(info->instance, NULL);
-}
+//===== RENDERING FUNCTION
 
 VkResult vulkan_begin_command_buffer(vulkan_info_t *info) {
 	VkCommandBufferBeginInfo cmd_info = {};
@@ -1453,4 +1397,61 @@ VkResult vulkan_render_frame(vulkan_info_t *info) {
 	vkDestroyFence(info->device, draw_fence, NULL);
 
 	return res;
+}
+
+//===== CLEAN FUNCTIONS
+
+static void vulkan_destroy_framebuffers(VkDevice d, VkFramebuffer *b, uint32_t c) {
+	for (uint32_t i = 0; i < c; i++)
+		vkDestroyFramebuffer(d, b[i], NULL);
+	delete[] b;
+}
+
+static void vulkan_destroy_data_buffer(VkDevice device, data_buffer_t buffer) {
+	vkDestroyBuffer(device, buffer.buffer, NULL);
+	vkFreeMemory(device, buffer.memory, NULL);
+}
+
+static void vulkan_destroy_image_buffer(VkDevice device, image_buffer_t buffer) {
+	vkDestroyImageView(device, buffer.view, NULL);
+	vkDestroyImage(device, buffer.image, NULL);
+	vkFreeMemory(device, buffer.memory, NULL);
+}
+
+void vulkan_unload_shaders(vulkan_info_t *info, uint32_t count) {
+	for (uint32_t i = 0; i < count; i++)
+		vkDestroyShaderModule(info->device, info->shader_stages[i].module, NULL);
+	delete[] info->shader_stages;
+}
+
+void vulkan_cleanup(vulkan_info_t *info) {
+	vkDestroyPipeline(info->device, info->pipeline, NULL);
+	vulkan_destroy_data_buffer(info->device, info->vertex_buffer);
+	vulkan_destroy_framebuffers(info->device, info->framebuffers,
+															info->swapchain_images_count);
+
+
+	vkDestroyRenderPass(info->device, info->render_pass, NULL);
+	vkDestroyDescriptorPool(info->device, info->descriptor_pool, NULL);
+	vkDestroyPipelineLayout(info->device, info->pipeline_layout, NULL);
+
+	for (uint32_t i = 0; i < NUM_DESCRIPTORS; i++)
+		vkDestroyDescriptorSetLayout(info->device, info->descriptor_layouts[i], NULL);
+	delete[] info->descriptor_layouts;
+
+	vulkan_destroy_data_buffer(info->device, info->uniform_buffer);
+	vulkan_destroy_image_buffer(info->device, info->depth_buffer);	
+
+	for (uint32_t i = 0; i < info->swapchain_images_count; i++)
+		vkDestroyImageView(info->device, info->swapchain_buffers[i].view, NULL);
+	delete[] info->swapchain_buffers;
+
+	vkDestroySwapchainKHR(info->device, info->swapchain, NULL);
+	vkFreeCommandBuffers(info->device, info->cmd_pool, 1, &info->cmd_buffer);
+	vkDestroyCommandPool(info->device, info->cmd_pool, NULL);
+	vkDeviceWaitIdle(info->device);
+	vkDestroyDevice(info->device, NULL);
+	vkDestroySurfaceKHR(info->instance, info->surface, NULL);
+	destroy_window(&info->window);
+	vkDestroyInstance(info->instance, NULL);
 }

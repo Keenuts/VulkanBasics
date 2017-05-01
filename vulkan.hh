@@ -103,6 +103,7 @@ struct vulkan_info_t {
 	VkPipelineLayout pipeline_layout;
 	VkRenderPass render_pass;
 	VkPipelineShaderStageCreateInfo *shader_stages;
+	uint32_t shader_stages_count;
 	VkFramebuffer *framebuffers;
 	VkPipeline pipeline;
 	VkViewport viewport;
@@ -152,10 +153,14 @@ static const char* vktostring(VkResult res)
 VkResult vulkan_initialize(vulkan_info_t *info);
 VkResult vulkan_create_vertex_buffer(vulkan_info_t *info, uint32_t size,
 																						data_buffer_t *buffer);
+VkResult vulkan_load_shaders(vulkan_info_t *info, uint32_t count,
+														 const char **paths, VkShaderStageFlagBits *flags);
+VkResult vulkan_create_pipeline(vulkan_info_t *info);
 
 VkResult vulkan_begin_command_buffer(vulkan_info_t *info);
 VkResult vulkan_update_vertex_buffer(vulkan_info_t *info, data_buffer_t *buffer,
 																		 vertex_t *vertices, uint32_t count);
-
 VkResult vulkan_render_frame(vulkan_info_t *info);
+
+void vulkan_unload_shaders(vulkan_info_t *info, uint32_t count);
 void vulkan_cleanup(vulkan_info_t *info);

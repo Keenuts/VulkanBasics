@@ -2,6 +2,7 @@
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
+#include <vulkan/vulkan.hpp>
 
 struct scene_info_t {
 	glm::mat4 clip;
@@ -30,6 +31,13 @@ struct vertex_t {
 struct model_t {
 	vertex_t *vertices;
 	uint32_t count;
+};
+
+struct texture_t {
+	int32_t width;
+	int32_t height;
+	int32_t channels;
+	VkDeviceSize size;
 };
 
 struct object_info_t {
