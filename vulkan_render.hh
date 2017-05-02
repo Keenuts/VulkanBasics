@@ -16,6 +16,6 @@ struct vulkan_frame_info_t {
 	//Shaders are loaded upfront
 };
 
-VkResult render_create_cmd(vulkan_info_t *info, vulkan_frame_info_t *frame);
-VkResult render_submit(vulkan_info_t *info, vulkan_frame_info_t *frame);
+void render_create_cmd(vulkan_info_t *info, vulkan_frame_info_t *frame);
+void render_submit(vulkan_info_t *info, vulkan_frame_info_t *frame);
 void render_destroy(vulkan_info_t *info, vulkan_frame_info_t *frame);

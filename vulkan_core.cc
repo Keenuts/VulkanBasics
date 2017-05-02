@@ -527,42 +527,23 @@ static VkResult vulkan_initialize_swachain_images(vulkan_info_t *info) {
 		return VK_INCOMPLETE;
 
 	std::vector<VkImage> images = std::vector<VkImage>(image_count);
-	res = vkGetSwapchainImagesKHR(info->device, info->swapchain, &image_count,
-																														images.data());
+	res = vkGetSwapchainImagesKHR(info->device, info->swapchain, &image_count, images.data());
 	CHECK_VK(res);
 
 	info->swapchain_buffers = new swapchain_buffer_t[image_count];
 	for (uint32_t i = 0; i < image_count ; i++) {
 		info->swapchain_buffers[i].image = images[i];
-		set_image_layout(&info->cmd_buffer, images[i], VK_IMAGE_ASPECT_COLOR_BIT,
-									 	 VK_IMAGE_LAYOUT_UNDEFINED,
-									 	 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		set_image_layout(
+			&info->cmd_buffer,
+			images[i],
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+		);
 	}
 
-	res = VK_SUCCESS;
 	for (uint32_t i = 0; i < image_count ; i++)
-	{
-		VkImageViewCreateInfo color_image_view = {};
-		color_image_view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		color_image_view.pNext = NULL;
-		color_image_view.flags = 0;
-		color_image_view.image = info->swapchain_buffers[i].image;
-		color_image_view.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		color_image_view.format = info->image_format; 
-		color_image_view.components.r = VK_COMPONENT_SWIZZLE_R;
-		color_image_view.components.g = VK_COMPONENT_SWIZZLE_G;
-		color_image_view.components.b = VK_COMPONENT_SWIZZLE_B;
-		color_image_view.components.a = VK_COMPONENT_SWIZZLE_A;
-		color_image_view.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		color_image_view.subresourceRange.baseMipLevel = 0;
-		color_image_view.subresourceRange.levelCount = 1;
-		color_image_view.subresourceRange.baseArrayLayer = 0;
-		color_image_view.subresourceRange.layerCount = 1;
-
-		res = vkCreateImageView(info->device, &color_image_view, NULL, &info->swapchain_buffers[i].view);
-		if (res != VK_SUCCESS)
-			break;
-	}
+		image_view_create(info, info->swapchain_buffers[i].image, info->image_format, &info->swapchain_buffers[i].view);
 
 	info->current_buffer = 0;
 	info->swapchain_images_count = image_count;
@@ -1257,11 +1238,11 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 }
 
 VkResult vulkan_create_texture(vulkan_info_t *info, texture_t *tex) {
-	create_image(info, tex->width, tex->height, &tex->storage_image,
+	image_create(info, tex->width, tex->height, &tex->storage_image,
 										 &tex->storage_memory, &tex->size,
 										 VK_FORMAT_R8G8B8A8_UNORM,
 										 VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-	create_image(info, tex->width, tex->height, &tex->texture_image,
+	image_create(info, tex->width, tex->height, &tex->texture_image,
 										 &tex->texture_memory, &tex->size,
 										 VK_FORMAT_R8G8B8A8_UNORM,
 										 VK_IMAGE_USAGE_TRANSFER_DST_BIT |
@@ -1293,19 +1274,19 @@ VkResult vulkan_update_texture(vulkan_info_t *info, texture_t *tex, stbi_uc* dat
 
 	vkUnmapMemory(info->device, tex->storage_memory);
 
-	layout_transition(info, tex->storage_image,
+	image_layout_transition(info, tex->storage_image,
 		VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_LAYOUT_PREINITIALIZED,
 		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
 	);
 
-	layout_transition(info, tex->texture_image,
+	image_layout_transition(info, tex->texture_image,
 		VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_LAYOUT_PREINITIALIZED,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
 	);
 
-	copy_image(info, tex->storage_image, tex->texture_image, tex->width, tex->height);
+	image_copy(info, tex->storage_image, tex->texture_image, tex->width, tex->height);
 	return res;
 }
 

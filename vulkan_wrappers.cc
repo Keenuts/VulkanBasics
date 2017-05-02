@@ -1,4 +1,5 @@
 #include "vulkan_wrappers.hh"
+#include "vulkan_exception.hh"
 
 bool find_memory_type_index(vulkan_info_t *info, uint32_t type,
 																	 VkFlags flags, uint32_t *res) {
@@ -14,10 +15,10 @@ bool find_memory_type_index(vulkan_info_t *info, uint32_t type,
 		}
 		type >>= 1;
 	}
-	return false;
+	assert(0 && "Unable to find the proper memory type");
 }
 
-VkCommandBuffer begin_disposable_command(vulkan_info_t *info) {
+VkCommandBuffer command_begin_disposable(vulkan_info_t *info) {
 	VkCommandBufferAllocateInfo alloc_info = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
 		.pNext = NULL,
@@ -27,11 +28,11 @@ VkCommandBuffer begin_disposable_command(vulkan_info_t *info) {
 	};
 
 	VkResult res = VK_SUCCESS;
-	(void)res;
 	VkCommandBuffer command;
 
 	res = vkAllocateCommandBuffers(info->device, &alloc_info, &command);
-	//TODO: throw exception
+	if (res != VK_SUCCESS)
+		throw VkException(res);
 	
 	VkCommandBufferBeginInfo begin_info = {};
 	begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -40,16 +41,14 @@ VkCommandBuffer begin_disposable_command(vulkan_info_t *info) {
 	begin_info.pInheritanceInfo = NULL;
 
 	res = vkBeginCommandBuffer(command, &begin_info);
-	//TODO: throw exception
+	assert(res == VK_SUCCESS);
 	return command;
 }
 
-void submit_disposable_command(vulkan_info_t *info, VkCommandBuffer command) {
+void command_submit_disposable(vulkan_info_t *info, VkCommandBuffer command) {
 	VkResult res = VK_SUCCESS;
-	(void)res;
-
 	res = vkEndCommandBuffer(command);
-	//TODO: throw exception
+	assert(res == VK_SUCCESS);
 
 	VkSubmitInfo submission = { };
 	submission.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -57,43 +56,15 @@ void submit_disposable_command(vulkan_info_t *info, VkCommandBuffer command) {
 	submission.pCommandBuffers = &command;
 
 	res = vkQueueSubmit(info->graphic_queue, 1, &submission, VK_NULL_HANDLE);
-	//TODO: throw exception
+	assert(res == VK_SUCCESS);
 
 	res = vkQueueWaitIdle(info->graphic_queue);
-	//TODO: throw exception
+	assert(res == VK_SUCCESS);
 
 	vkFreeCommandBuffers(info->device, info->cmd_pool, 1, &command);
 }
 
-void layout_transition(vulkan_info_t *info, VkImage image, VkFormat format,
-											 VkImageLayout old_layout, VkImageLayout new_layout) {
-	VkCommandBuffer command = begin_disposable_command(info);
-
-	VkImageMemoryBarrier barrier = { };
-	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	barrier.pNext = NULL;
-	barrier.srcAccessMask = 0;
-	barrier.dstAccessMask = 0;
-	barrier.oldLayout = old_layout;
-	barrier.newLayout = new_layout;
-	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.image = image;
-	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	barrier.subresourceRange.baseMipLevel = 0;
-	barrier.subresourceRange.levelCount = 1;
-	barrier.subresourceRange.baseArrayLayer = 0;
-	barrier.subresourceRange.layerCount = 1;
-
-	vkCmdPipelineBarrier( command,
-		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-		0, 0, nullptr, 0, nullptr, 1, &barrier);
-
-	submit_disposable_command(info, command);
-}
-
-void create_image(vulkan_info_t *info, uint32_t w, uint32_t h,
+void image_create(vulkan_info_t *info, uint32_t w, uint32_t h,
 									VkImage *img, VkDeviceMemory *mem, VkDeviceSize *size,
 									VkFormat format, VkImageUsageFlags usage) {
 	VkResult res = VK_SUCCESS;
@@ -117,7 +88,7 @@ void create_image(vulkan_info_t *info, uint32_t w, uint32_t h,
 	image_info.samples = VK_SAMPLE_COUNT_1_BIT;
 
 	res = vkCreateImage(info->device, &image_info, NULL, img);
-	//TODO: throw exception
+	assert(res == VK_SUCCESS && "Unable to create Image");
 
 	VkMemoryRequirements mem_reqs;
 	vkGetImageMemoryRequirements(info->device, *img, &mem_reqs);
@@ -129,22 +100,49 @@ void create_image(vulkan_info_t *info, uint32_t w, uint32_t h,
 	alloc_info.allocationSize = mem_reqs.size;
 	*size = mem_reqs.size;
 	bool success = find_memory_type_index(info, mem_reqs.memoryTypeBits,
-																				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-																				 | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-																				&alloc_info.memoryTypeIndex);
-	(void)success;
-	//TODO: throw exception
+										VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+										&alloc_info.memoryTypeIndex );
 
+	assert(success);
 	res = vkAllocateMemory(info->device, &alloc_info, NULL, mem);
-	//TODO: throw exception
+	if (res != VK_SUCCESS)
+		throw VkException(res);
 
 	res = vkBindImageMemory(info->device, *img, *mem, 0);
-	//TODO: throw exception
+	assert(res == VK_SUCCESS && "Cannot bind memory");
 }
 
-void copy_image(vulkan_info_t *info, VkImage src, VkImage dst, uint32_t width,
+void image_layout_transition(vulkan_info_t *info, VkImage image, VkFormat format,
+											 			 VkImageLayout old_layout, VkImageLayout new_layout) {
+	VkCommandBuffer command = command_begin_disposable(info);
+
+	VkImageMemoryBarrier barrier = { };
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.pNext = NULL;
+	barrier.srcAccessMask = 0;
+	barrier.dstAccessMask = 0;
+	barrier.oldLayout = old_layout;
+	barrier.newLayout = new_layout;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = image;
+	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	barrier.subresourceRange.baseMipLevel = 0;
+	barrier.subresourceRange.levelCount = 1;
+	barrier.subresourceRange.baseArrayLayer = 0;
+	barrier.subresourceRange.layerCount = 1;
+
+	vkCmdPipelineBarrier( command,
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+		0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+	command_submit_disposable(info, command);
+}
+
+void image_copy(vulkan_info_t *info, VkImage src, VkImage dst, uint32_t width,
 								uint32_t height) {
-	VkCommandBuffer command = begin_disposable_command(info);
+	VkCommandBuffer command = command_begin_disposable(info);
 
 	VkImageSubresourceLayers subResource = { };
 	subResource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -163,5 +161,28 @@ void copy_image(vulkan_info_t *info, VkImage src, VkImage dst, uint32_t width,
 
 	vkCmdCopyImage(command, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 								 dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-	submit_disposable_command(info, command);
+	command_submit_disposable(info, command);
+}
+
+void image_view_create(vulkan_info_t *info, VkImage image, VkFormat format, VkImageView *view) {
+	VkImageViewCreateInfo create_info = { };
+	create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	create_info.pNext = NULL;
+	create_info.flags = 0;
+	create_info.image = image;
+	create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	create_info.format = format; 
+	create_info.components.r = VK_COMPONENT_SWIZZLE_R;
+	create_info.components.g = VK_COMPONENT_SWIZZLE_G;
+	create_info.components.b = VK_COMPONENT_SWIZZLE_B;
+	create_info.components.a = VK_COMPONENT_SWIZZLE_A;
+	create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	create_info.subresourceRange.baseMipLevel = 0;
+	create_info.subresourceRange.levelCount = 1;
+	create_info.subresourceRange.baseArrayLayer = 0;
+	create_info.subresourceRange.layerCount = 1;
+
+	VkResult res = vkCreateImageView(info->device, &create_info, NULL, view);
+	if (res != VK_SUCCESS)
+		throw VkException(res);
 }

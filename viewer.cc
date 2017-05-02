@@ -25,35 +25,25 @@ int main(int argc, char** argv) {
 	vulkan_info.height = 500;
 
 	VkResult res = vulkan_initialize(&vulkan_info);
-	if (res != VK_SUCCESS) {
-		printf("[Error] Failed initialization : %s\n", vktostring(res));
-		return 1;
-	}
+	assert(res == VK_SUCCESS);
 
 	//=========== ASSETS LOADING
 	model_t model = { 0 };
-	if (!load_model(MESH_PATH, &model)) {
-		printf("[ERROR] Unable to load a model\n");
-		return 1;
-	}
+	bool success = load_model(MESH_PATH, &model);
+	assert(success);
 
 // IMAGE CREATION
 	texture_t texture = { 0 };
 	stbi_uc *pixels = stbi_load(MESH_DIFFUSE, (int32_t*)&texture.width,
 															(int32_t*)&texture.height, (int32_t*)&texture.channels,
 															STBI_rgb_alpha);
-	if (!pixels)
-		return 1;
+	assert(pixels);
+
 	res = vulkan_create_texture(&vulkan_info, &texture);
-	if (res != VK_SUCCESS) {
-		printf("[ERROR] Unable to create a texture\n");
-		return 1;
-	}
+	assert(res == VK_SUCCESS);
 	res = vulkan_update_texture(&vulkan_info, &texture, pixels);
-	if (res != VK_SUCCESS) {
-		printf("[ERROR] Unable to update a texture\n");
-		return 1;
-	}
+	assert(res == VK_SUCCESS);
+
 	stbi_image_free(pixels);
 
 //END IMAGE
@@ -127,10 +117,8 @@ int main(int argc, char** argv) {
 		scene.model = glm::rotate(scene.model, angle * delta_time * DEG2RAD, glm::vec3(0,1,0));
 		vulkan_update_uniform_buffer(&vulkan_info, &scene);
 
-		res = render_create_cmd(&vulkan_info, &frame_info);
-		CHECK_VK(res);
-		res = render_submit(&vulkan_info, &frame_info);
-		CHECK_VK(res);
+		render_create_cmd(&vulkan_info, &frame_info);
+		render_submit(&vulkan_info, &frame_info);
 		render_destroy(&vulkan_info, &frame_info);
 
 		clock_t end_tick = clock();
