@@ -2,6 +2,9 @@
 
 #include "vulkan.hh"
 
+bool find_memory_type_index(vulkan_info_t *info, uint32_t type, VkFlags flags, uint32_t *res);
+uint32_t get_queue_family_index(VkQueueFlagBits bits, uint32_t count, VkQueueFamilyProperties *props);
+
 /* Command buffers */
 VkCommandBuffer command_begin_disposable(vulkan_info_t *info);
 void command_submit_disposable(vulkan_info_t *info, VkCommandBuffer cmd);

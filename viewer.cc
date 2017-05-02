@@ -9,11 +9,11 @@
 #define MESH_PATH "assets/df9/model.obj"
 #define MESH_DIFFUSE "assets/df9/tex_albedo.jpg"
 
-#define SHADER_COUNT (2)
+#define SHADER_COUNT 2
 #define FRAG_SHADER "assets/shaders/diffuse_frag.spv"
 #define VERT_SHADER "assets/shaders/diffuse_vert.spv"
 
-#define FRAMERATE (60.0f)
+#define FRAMERATE 60.0f
 #define CLOCKS_PER_FRAME ((long int)((1.0F / FRAMERATE) * CLOCKS_PER_SEC))
 
 //This main is used as a draft, don't worry

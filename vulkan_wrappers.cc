@@ -1,15 +1,11 @@
 #include "vulkan_wrappers.hh"
 #include "vulkan_exception.hh"
 
-bool find_memory_type_index(vulkan_info_t *info, uint32_t type,
-																	 VkFlags flags, uint32_t *res) {
+bool find_memory_type_index(vulkan_info_t *info, uint32_t type, VkFlags flags, uint32_t *res) {
 	for (uint32_t i = 0; i < info->memory_properties.memoryTypeCount; i++) {
 		if ((type & 1) == 1) {
 			if ((info->memory_properties.memoryTypes[i].propertyFlags & flags) == flags) {
 				*res = i;
-#ifdef LOG_VERBOSE
-				printf("[DEBUG] Found compatible memory type.\n");
-#endif
 				return true;
 			}
 		}
@@ -17,6 +13,16 @@ bool find_memory_type_index(vulkan_info_t *info, uint32_t type,
 	}
 	assert(0 && "Unable to find the proper memory type");
 }
+
+uint32_t get_queue_family_index(VkQueueFlagBits bits, uint32_t count, VkQueueFamilyProperties *props) {
+	for (uint32_t i = 0; i < count ; i++) {
+		if (props[i].queueFlags & bits)
+			return i;
+	}
+	assert(0 && "Unable to find the proper queue family.");
+	return (uint32_t)-1;
+}
+
 
 VkCommandBuffer command_begin_disposable(vulkan_info_t *info) {
 	VkCommandBufferAllocateInfo alloc_info = {

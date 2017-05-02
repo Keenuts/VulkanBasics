@@ -35,7 +35,7 @@
 
 #define LOG(msg) printf("[INFO] %s\n", (msg))
 
-static VkResult vulkan_startup(vulkan_info_t *info) {
+static void vulkan_startup(vulkan_info_t *info) {
 	//Initialize info.instance
 	
 	VkResult res;
@@ -48,41 +48,6 @@ static VkResult vulkan_startup(vulkan_info_t *info) {
 		.engineVersion = 1,
 		.apiVersion = VK_API_VERSION_1_0,
 	};
-
-#ifdef LOG_VERBOSE
-	uint32_t ext_nbr = 0;
-	res = vkEnumerateInstanceExtensionProperties(NULL, &ext_nbr, NULL);
-	CHECK_VK(res);
-
-
-	VkExtensionProperties *ext = new VkExtensionProperties[ext_nbr];
-	if (ext == NULL)
-		return VK_ERROR_OUT_OF_HOST_MEMORY;
-	res = vkEnumerateInstanceExtensionProperties(NULL, &ext_nbr, ext);
-	CHECK_VK(res);
-
-	printf("[DEBUG] Supported instance extensions:\n");
-	for (uint32_t i = 0 ; i < ext_nbr ; i++ )
-		printf("[DEBUG]\t\t- %s\n", ext[i].extensionName);
-	delete[] ext;
-#endif
-
-
-
-#ifdef LOG_VERBOSE
-	uint32_t layer_nbr = 0;
-	res = vkEnumerateInstanceLayerProperties(&layer_nbr, NULL);
-	CHECK_VK(res);
-
-	VkLayerProperties *layers = new VkLayerProperties[layer_nbr];
-	res = vkEnumerateInstanceLayerProperties(&layer_nbr, layers);
-	CHECK_VK(res);
-
-	printf("[DEBUG] Supported instance layers:\n");
-	for (uint32_t i = 0 ; i < layer_nbr ; i++ )
-		printf("[DEBUG]\t\t%s\n", layers[i].layerName);
-	delete[] layers;
-#endif
 
 	std::vector<const char*> extension_names = std::vector<const char*>();
 	std::vector<const char*> validation_layers = std::vector<const char*>();
@@ -103,12 +68,6 @@ static VkResult vulkan_startup(vulkan_info_t *info) {
 	//validation_layers.push_back("VK_LAYER_RENDERDOC_Capture");
 	validation_layers.push_back("VK_LAYER_GOOGLE_unique_objects");
 	validation_layers.push_back("VK_LAYER_GOOGLE_threading");
-
-# ifdef LOG_VERBOSE
-	printf("[DEBUG] Required layers:\n");
-	for (const char* s : validation_layers)
-		printf("[DEBUG]\t\t%s\n", s);
-# endif
 #endif
 
 	VkInstanceCreateInfo create_info = {
@@ -123,53 +82,25 @@ static VkResult vulkan_startup(vulkan_info_t *info) {
 	};
 
 	res = vkCreateInstance(&create_info, NULL, &info->instance);
-	if(res != VK_SUCCESS)
-		return res;
-	return VK_SUCCESS;
+	assert(res == VK_SUCCESS);
 }
 
-static VkResult vulkan_initialize_devices(vulkan_info_t *info) {
-	//Initialize info.physical_device
-	//					 info.memory_properties
-	//					 info.device_properties
+static void vulkan_initialize_devices(vulkan_info_t *info) {
 	VkResult res = VK_SUCCESS;
 
-	uint32_t gpu_count;
+	uint32_t gpu_count = 0;
 	res = vkEnumeratePhysicalDevices(info->instance, &gpu_count, NULL);
-	CHECK_VK(res);
-	if (gpu_count == 0)
-		return VK_INCOMPLETE;
+	assert(res == VK_SUCCESS && gpu_count != 0);
 
 	VkPhysicalDevice *phys_devices = new VkPhysicalDevice[gpu_count];
 	res = vkEnumeratePhysicalDevices(info->instance, &gpu_count, phys_devices);
-	CHECK_VK(res);
+	assert(res == VK_SUCCESS);
+
 	info->physical_device = phys_devices[0];
-
-#ifdef LOG_VERBOSE
-	printf("[DEBUG] Devices: %u\n", gpu_count);
-	for (uint32_t i = 0; i < gpu_count; i++) {
-		VkPhysicalDeviceProperties deviceInfo;
-		vkGetPhysicalDeviceProperties(phys_devices[i], &deviceInfo);
-		printf("[DEBUG]\t\t[%u] %s\n", i, deviceInfo.deviceName);
-	}
-#endif
-
 	delete[] phys_devices;
+
 	vkGetPhysicalDeviceMemoryProperties(info->physical_device, &info->memory_properties);
 	vkGetPhysicalDeviceProperties(info->physical_device, &info->device_properties);
-	printf("[INFO] Selecting device: %s\n", info->device_properties.deviceName); 
-	return VK_SUCCESS;
-}
-
-static uint32_t get_queue_family_index(VkQueueFlagBits bits, uint32_t count,
-																			 VkQueueFamilyProperties *props) {
-	for (uint32_t i = 0; i < count ; i++) {
-		if (props[i].queueFlags & bits)
-			return i;
-	}
-
-	printf("[ERROR] Unable to queue type: %u\n", bits);
-	return (uint32_t)-1;
 }
 
 static VkResult vulkan_create_command_pool(vulkan_info_t *info, uint32_t graphic_queue) {
@@ -1176,11 +1107,8 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	if (!create_window(&info->window, info->width, info->height))
 		return VK_INCOMPLETE;
 
-	res = vulkan_startup(info);
-	CHECK_VK(res);
-	LOG("Vulkan initialized.");
-	res = vulkan_initialize_devices(info);
-	CHECK_VK(res);
+	vulkan_startup(info);
+	vulkan_initialize_devices(info);
 	res = vulkan_create_device(info, &queue_info);
 	CHECK_VK(res);
 	LOG("Logical device created initialized.");
