@@ -37,6 +37,7 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
+// IMAGE CREATION
 	texture_t texture = { 0 };
 	stbi_uc *pixels = stbi_load(MESH_DIFFUSE, (int32_t*)&texture.width,
 															(int32_t*)&texture.height, (int32_t*)&texture.channels,
@@ -44,10 +45,18 @@ int main(int argc, char** argv) {
 	if (!pixels)
 		return 1;
 	res = vulkan_create_texture(&vulkan_info, &texture);
-	CHECK_VK(res);
+	if (res != VK_SUCCESS) {
+		printf("[ERROR] Unable to create a texture\n");
+		return 1;
+	}
 	res = vulkan_update_texture(&vulkan_info, &texture, pixels);
+	if (res != VK_SUCCESS) {
+		printf("[ERROR] Unable to update a texture\n");
+		return 1;
+	}
 	stbi_image_free(pixels);
 
+//END IMAGE
 	printf("[INFO] Loading a texture %dx%d\n", texture.width, texture.height);
 
 	const char *shaders_paths[SHADER_COUNT] = { VERT_SHADER, FRAG_SHADER };
@@ -56,7 +65,10 @@ int main(int argc, char** argv) {
 	};
 
 	res = vulkan_load_shaders(&vulkan_info, SHADER_COUNT, shaders_paths, shaders_flags);
-	CHECK_VK(res);
+	if (res != VK_SUCCESS) {
+		printf("[ERROR] Unable to load a shader\n");
+		return 1;
+	}
 	printf("[INFO] %d shaders loaded.\n", SHADER_COUNT);
 
 	//=========== RENDERING SETUP
@@ -99,7 +111,7 @@ int main(int argc, char** argv) {
 	scene.projection = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 1000.0f);
 
 	res = vulkan_update_uniform_buffer(&vulkan_info, &scene);
-	if (!load_model(MESH_PATH, &model)) {
+	if (res != VK_SUCCESS) {
 		printf("[ERROR] Unable to update uniform buffer.\n");
 		return 1;
 	}

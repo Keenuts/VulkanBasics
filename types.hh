@@ -35,8 +35,10 @@ struct texture_t {
 	uint32_t height;
 	uint32_t channels;
 	VkDeviceSize size;
-	VkImage image;
-	VkDeviceMemory memory;
+	VkImage storage_image;
+	VkDeviceMemory storage_memory;
+	VkImage texture_image;
+	VkDeviceMemory texture_memory;
 };
 
 //unused

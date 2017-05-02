@@ -30,6 +30,7 @@
 #include "vulkan.hh"
 #include "window.hh"
 #include "helpers.hh"
+#include "vulkan_wrappers.hh"
 
 
 #define LOG(msg) printf("[INFO] %s\n", (msg))
@@ -636,23 +637,6 @@ static VkResult vulkan_create_depth_buffer(vulkan_info_t *info) {
 	CHECK_VK(res);
 
 	return res;
-}
-
-static bool find_memory_type_index(vulkan_info_t *info, uint32_t type,
-																	 VkFlags flags, uint32_t *res) {
-	for (uint32_t i = 0; i < info->memory_properties.memoryTypeCount; i++) {
-		if ((type & 1) == 1) {
-			if ((info->memory_properties.memoryTypes[i].propertyFlags & flags) == flags) {
-				*res = i;
-#ifdef LOG_VERBOSE
-				printf("[DEBUG] Found compatible memory type.\n");
-#endif
-				return true;
-			}
-		}
-		type >>= 1;
-	}
-	return false;
 }
 
 static VkResult vulkan_create_uniform_buffer(vulkan_info_t *info, uint32_t size) {
@@ -1273,52 +1257,22 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 }
 
 VkResult vulkan_create_texture(vulkan_info_t *info, texture_t *tex) {
-	VkResult res = VK_SUCCESS;
-
-	VkImageCreateInfo image_info = {};
-	image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	image_info.pNext = NULL;
-	image_info.flags = 0;
-	image_info.imageType = VK_IMAGE_TYPE_2D;
-	image_info.extent.width = tex->width;
-	image_info.extent.height = tex->height;
-	image_info.extent.depth = 1;
-	image_info.mipLevels = 1;
-	image_info.arrayLayers = 1;
-	image_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-	image_info.tiling = VK_IMAGE_TILING_LINEAR;
-	image_info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
-	image_info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	image_info.samples = VK_SAMPLE_COUNT_1_BIT;
-
-	res = vkCreateImage(info->device, &image_info, NULL, &tex->image);
-	CHECK_VK(res);
-
-	VkMemoryRequirements mem_reqs;
-	vkGetImageMemoryRequirements(info->device, tex->image, &mem_reqs);
-
-	VkMemoryAllocateInfo alloc_info = {};
-	alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	alloc_info.pNext = NULL;
-	alloc_info.memoryTypeIndex = 0;
-	alloc_info.allocationSize = mem_reqs.size;
-	tex->size = mem_reqs.size;
-	bool success = find_memory_type_index(info, mem_reqs.memoryTypeBits,
-																				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-																				 | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-																				&alloc_info.memoryTypeIndex);
-	if (!success)
-		return VK_INCOMPLETE;
-	res = vkAllocateMemory(info->device, &alloc_info, NULL, &tex->memory);
-	CHECK_VK(res);
-	return vkBindImageMemory(info->device, tex->image, tex->memory, 0);
+	create_image(info, tex->width, tex->height, &tex->storage_image,
+										 &tex->storage_memory, &tex->size,
+										 VK_FORMAT_R8G8B8A8_UNORM,
+										 VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+	create_image(info, tex->width, tex->height, &tex->texture_image,
+										 &tex->texture_memory, &tex->size,
+										 VK_FORMAT_R8G8B8A8_UNORM,
+										 VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+										 VK_IMAGE_USAGE_SAMPLED_BIT);
+	return VK_SUCCESS;
 }
 
 VkResult vulkan_update_texture(vulkan_info_t *info, texture_t *tex, stbi_uc* data) {
 	VkResult res = VK_SUCCESS;
 	void *ptr = NULL;
-	res = vkMapMemory(info->device, tex->memory, 0, tex->size, 0, &ptr);
+	res = vkMapMemory(info->device, tex->storage_memory, 0, tex->size, 0, &ptr);
 	CHECK_VK(res);
 
 	VkImageSubresource subresource = {};
@@ -1327,7 +1281,7 @@ VkResult vulkan_update_texture(vulkan_info_t *info, texture_t *tex, stbi_uc* dat
 	subresource.arrayLayer = 0;
 
 	VkSubresourceLayout layout;
-	vkGetImageSubresourceLayout(info->device, tex->image, &subresource, &layout);
+	vkGetImageSubresourceLayout(info->device, tex->storage_image, &subresource, &layout);
 
 	if (layout.rowPitch == tex->width * 4)
 		memcpy(ptr, data, tex->size);
@@ -1337,7 +1291,21 @@ VkResult vulkan_update_texture(vulkan_info_t *info, texture_t *tex, stbi_uc* dat
 			memcpy(&bytes[y * layout.rowPitch], &data[y * tex->width * 4], tex->width * 4);
 	}
 
-	vkUnmapMemory(info->device, tex->memory);
+	vkUnmapMemory(info->device, tex->storage_memory);
+
+	layout_transition(info, tex->storage_image,
+		VK_FORMAT_R8G8B8A8_UNORM,
+		VK_IMAGE_LAYOUT_PREINITIALIZED,
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+	);
+
+	layout_transition(info, tex->texture_image,
+		VK_FORMAT_R8G8B8A8_UNORM,
+		VK_IMAGE_LAYOUT_PREINITIALIZED,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+	);
+
+	copy_image(info, tex->storage_image, tex->texture_image, tex->width, tex->height);
 	return res;
 }
 

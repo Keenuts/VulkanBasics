@@ -114,3 +114,5 @@ VkResult set_image_layout(VkCommandBuffer *cmd_buffer, VkImage image,
 																 VkImageAspectFlags aspects,
 																 VkImageLayout old_layout,
 																 VkImageLayout new_layout);
+bool find_memory_type_index(vulkan_info_t *info, uint32_t type,
+																	 VkFlags flags, uint32_t *res);
