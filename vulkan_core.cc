@@ -31,6 +31,7 @@
 #include "window.hh"
 #include "helpers.hh"
 #include "vulkan_wrappers.hh"
+#include "vulkan_exception.hh"
 
 
 #define LOG(msg) printf("[INFO] %s\n", (msg))
@@ -103,8 +104,7 @@ static void vulkan_initialize_devices(vulkan_info_t *info) {
 	vkGetPhysicalDeviceProperties(info->physical_device, &info->device_properties);
 }
 
-static VkResult vulkan_create_command_pool(vulkan_info_t *info, uint32_t graphic_queue) {
-	//Initialize info.cmd_pool
+static void vulkan_create_command_pool(vulkan_info_t *info, uint32_t graphic_queue) {
 	VkResult res;
 
 	VkCommandPoolCreateInfo cmd_pool_info = {
@@ -115,8 +115,7 @@ static VkResult vulkan_create_command_pool(vulkan_info_t *info, uint32_t graphic
 	};
 
 	res = vkCreateCommandPool(info->device, &cmd_pool_info, NULL, &info->cmd_pool);
-	CHECK_VK(res);
-	return VK_SUCCESS;
+	assert(res == VK_SUCCESS);
 }
 
 struct queue_creation_info_t {
@@ -127,7 +126,7 @@ struct queue_creation_info_t {
 	VkQueueFamilyProperties *family_props;
 };
 
-static VkResult vulkan_create_device(vulkan_info_t *info,
+static void vulkan_create_device(vulkan_info_t *info,
 												queue_creation_info_t *queue_info) {
 	//initialize info.device
 	VkResult res;
@@ -136,36 +135,15 @@ static VkResult vulkan_create_device(vulkan_info_t *info,
 																					 &queue_info->count, NULL);
 	queue_info->family_props = new VkQueueFamilyProperties[queue_info->count];
 	if (queue_info->family_props == NULL)
-		return VK_ERROR_OUT_OF_HOST_MEMORY;
+		throw VkException(VK_ERROR_OUT_OF_HOST_MEMORY);
 
-	vkGetPhysicalDeviceQueueFamilyProperties(info->physical_device,
-																					 &queue_info->count,
-																					 queue_info->family_props);
-
-#ifdef LOG_VERBOSE
-	uint32_t ext_nbr = 0;
-	res = vkEnumerateDeviceExtensionProperties(info->physical_device, NULL,
-																										  &ext_nbr, NULL);
-	CHECK_VK(res);
-	VkExtensionProperties *ext = new VkExtensionProperties[ext_nbr];
-	res = vkEnumerateDeviceExtensionProperties(info->physical_device, NULL,
-																								&ext_nbr, ext);
-	CHECK_VK(res);
-	
-	printf("[DEBUG] Supported device extensions\n");
-	for (uint32_t i = 0 ; i < ext_nbr ; i++ )
-		printf("[DEBUG] \t\t- %s\n", ext[i].extensionName);
-	delete[] ext;
-#endif
+	vkGetPhysicalDeviceQueueFamilyProperties(info->physical_device, &queue_info->count, queue_info->family_props);
 
 	std::vector<const char*> device_extension_names = std::vector<const char*>();
 	device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 
 
-	uint32_t queue_id = get_queue_family_index(VK_QUEUE_GRAPHICS_BIT,
-												queue_info->count, queue_info->family_props);
-	if (queue_id == (uint32_t)-1)
-		return VK_INCOMPLETE;
+	uint32_t queue_id = get_queue_family_index(VK_QUEUE_GRAPHICS_BIT, queue_info->count, queue_info->family_props);
 
 	float queue_priorities[1] = { 0.0f };
 	VkDeviceQueueCreateInfo queue_creation_info {
@@ -191,20 +169,21 @@ static VkResult vulkan_create_device(vulkan_info_t *info,
 	};
 
 	res = vkCreateDevice(info->physical_device, &create_info, NULL, &info->device);
-	CHECK_VK(res);
-	return vulkan_create_command_pool(info, queue_id);
+	assert(res == VK_SUCCESS);
+
+	vulkan_create_command_pool(info, queue_id);
 }
 
-static VkResult vulkan_create_queues(vulkan_info_t *info, queue_creation_info_t *queues) {
+static void vulkan_create_queues(vulkan_info_t *info, queue_creation_info_t *queues) {
 	queues->present_family_index = UINT32_MAX;
 	queues->graphic_family_index = UINT32_MAX;
 
 	VkBool32 *support_present = new VkBool32[queues->count];
+	if (support_present == NULL)
+		throw VkException(VK_ERROR_OUT_OF_HOST_MEMORY);
 
-	for (uint32_t i = 0; i < queues->count; i++) {
-		vkGetPhysicalDeviceSurfaceSupportKHR(info->physical_device,
-				i, info->surface, &support_present[i]);
-	}
+	for (uint32_t i = 0; i < queues->count; i++)
+		vkGetPhysicalDeviceSurfaceSupportKHR(info->physical_device, i, info->surface, &support_present[i]);
 
 	for (uint32_t i = 0; i < queues->count ; i++) {
 
@@ -213,20 +192,15 @@ static VkResult vulkan_create_queues(vulkan_info_t *info, queue_creation_info_t 
 
 		if (support_present[i] == VK_TRUE)
 			queues->present_family_index = i;
-		if (queues->present_family_index != UINT32_MAX
-		 && queues->graphic_family_index != UINT32_MAX)
+		if (queues->present_family_index != UINT32_MAX && queues->graphic_family_index != UINT32_MAX)
 			break;
 	}
 
-	if (queues->present_family_index == UINT32_MAX
-	 || queues->graphic_family_index == UINT32_MAX) {
-		std::cout << "[Error] No present queue found." << std::endl;
-		return VK_INCOMPLETE;
-	}
+	if (queues->present_family_index == UINT32_MAX || queues->graphic_family_index == UINT32_MAX)
+		throw VkException(VK_INCOMPLETE);
 
 	vkGetDeviceQueue(info->device, queues->graphic_family_index, 0, &info->graphic_queue);
 	vkGetDeviceQueue(info->device, queues->present_family_index, 0, &info->present_queue);
-	return VK_SUCCESS;
 }
 
 static VkResult vulkan_create_KHR_surface(vulkan_info_t *info) {
@@ -1109,16 +1083,10 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 
 	vulkan_startup(info);
 	vulkan_initialize_devices(info);
-	res = vulkan_create_device(info, &queue_info);
-	CHECK_VK(res);
-	LOG("Logical device created initialized.");
-	res = vulkan_create_KHR_surface(info);
-	CHECK_VK(res);
-	res = vulkan_create_queues(info, &queue_info);
-	CHECK_VK(res);
-	res = vulkan_create_command_buffer(info);
-	CHECK_VK(res);
-	LOG("Command buffer initialized.");
+	vulkan_create_device(info, &queue_info);
+	vulkan_create_KHR_surface(info);
+	vulkan_create_queues(info, &queue_info);
+	vulkan_create_command_buffer(info);
 	res = vulkan_create_swapchain(info);
 	CHECK_VK(res);
 	res = vulkan_initialize_swachain_images(info);
