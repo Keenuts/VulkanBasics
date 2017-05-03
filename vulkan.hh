@@ -110,9 +110,4 @@ void vulkan_unload_shaders(vulkan_info_t *info, uint32_t count);
 void vulkan_cleanup(vulkan_info_t *info);
 
 //HELPERS
-VkResult set_image_layout(VkCommandBuffer *cmd_buffer, VkImage image,
-																 VkImageAspectFlags aspects,
-																 VkImageLayout old_layout,
-																 VkImageLayout new_layout);
-bool find_memory_type_index(vulkan_info_t *info, uint32_t type,
-																	 VkFlags flags, uint32_t *res);
+bool find_memory_type_index(vulkan_info_t *info, uint32_t type, VkFlags flags, uint32_t *res);

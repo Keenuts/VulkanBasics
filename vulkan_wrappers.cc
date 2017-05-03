@@ -23,7 +23,6 @@ uint32_t get_queue_family_index(VkQueueFlagBits bits, uint32_t count, VkQueueFam
 	return (uint32_t)-1;
 }
 
-
 VkCommandBuffer command_begin_disposable(vulkan_info_t *info) {
 	VkCommandBufferAllocateInfo alloc_info = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -118,15 +117,56 @@ void image_create(vulkan_info_t *info, uint32_t w, uint32_t h,
 	assert(res == VK_SUCCESS && "Cannot bind memory");
 }
 
-void image_layout_transition(vulkan_info_t *info, VkImage image, VkFormat format,
-											 			 VkImageLayout old_layout, VkImageLayout new_layout) {
+static VkAccessFlags get_access_flag_from_old_layout(VkImageLayout layout) {
+	switch (layout) {
+		case VK_IMAGE_LAYOUT_PREINITIALIZED:
+			return VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+			return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+			return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+			return VK_ACCESS_TRANSFER_READ_BIT;
+		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+			return VK_ACCESS_SHADER_READ_BIT;
+		case VK_IMAGE_LAYOUT_UNDEFINED:
+			return 0;
+		default:
+			assert(0 && "Unhandled old layout transition");
+			break;
+	}
+	assert(0 && "Unhandled layout transition");
+	return VK_ACCESS_MEMORY_READ_BIT;
+}
+
+static VkAccessFlags get_access_flag_from_new_layout(VkImageLayout layout) {
+	switch(layout) {
+		case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+			return VK_ACCESS_TRANSFER_WRITE_BIT;
+		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+			return VK_ACCESS_TRANSFER_READ_BIT;
+		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+			return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+			return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+			return VK_ACCESS_SHADER_READ_BIT;
+		default:
+			assert(0 && "Unhandled new layout transition");
+			break;
+	}
+	assert(0 && "Unhandled layout transition");
+	return VK_ACCESS_MEMORY_READ_BIT;
+}
+
+void image_layout_transition(vulkan_info_t *info, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout) {
 	VkCommandBuffer command = command_begin_disposable(info);
 
 	VkImageMemoryBarrier barrier = { };
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	barrier.pNext = NULL;
-	barrier.srcAccessMask = 0;
-	barrier.dstAccessMask = 0;
+	barrier.srcAccessMask = get_access_flag_from_old_layout(old_layout);
+	barrier.dstAccessMask = get_access_flag_from_new_layout(new_layout);
 	barrier.oldLayout = old_layout;
 	barrier.newLayout = new_layout;
 	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;

@@ -311,77 +311,6 @@ static VkResult vulkan_create_command_buffer(vulkan_info_t *info)
 	return vkAllocateCommandBuffers(info->device, &cmd, &info->cmd_buffer);
 }
 
-//TODO: move to an helper file ?
-VkResult set_image_layout(VkCommandBuffer *cmd_buffer, VkImage image,
-																 VkImageAspectFlags aspects,
-																 VkImageLayout old_layout,
-																 VkImageLayout new_layout) {
-
-	VkImageMemoryBarrier barrier = {};
-	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	barrier.pNext = NULL;
-	barrier.oldLayout = old_layout;
-	barrier.newLayout = new_layout;
-	barrier.image = image;
-	barrier.subresourceRange.aspectMask = aspects;
-	barrier.subresourceRange.baseMipLevel = 0;
-	barrier.subresourceRange.levelCount = 1;
-	barrier.subresourceRange.layerCount = 1;
-
-	switch (old_layout) {
-		case VK_IMAGE_LAYOUT_PREINITIALIZED:
-			barrier.srcAccessMask =
-					VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-			barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-			barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-			barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-			barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-			break;
-		default:
-			return VK_INCOMPLETE;
-	}
-
-	switch (new_layout) {
-		case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-			barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-			barrier.srcAccessMask |= VK_ACCESS_TRANSFER_READ_BIT;
-			barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-			barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-			barrier.dstAccessMask |=
-					VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-			barrier.srcAccessMask =
-					VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
-			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-			break;
-		default:
-			return VK_INCOMPLETE;
-	}
-	
-	VkPipelineStageFlagBits srcFlags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-	VkPipelineStageFlagBits dstFlags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-
-	vkCmdPipelineBarrier(*cmd_buffer, srcFlags, dstFlags, 0, 0, 
-											 NULL, 0, NULL, 1, &barrier);
-	return VK_SUCCESS;
-}
-
 static void vulkan_initialize_swapchain_images(vulkan_info_t *info) {
 	VkResult res;
 	uint32_t image_count = 0;
@@ -393,14 +322,12 @@ static void vulkan_initialize_swapchain_images(vulkan_info_t *info) {
 	assert(res == VK_SUCCESS);
 
 	info->swapchain_buffers = new swapchain_buffer_t[image_count];
+	if (info->swapchain_buffers == NULL)
+		throw VkException(VK_ERROR_OUT_OF_HOST_MEMORY);
+
 	for (uint32_t i = 0; i < image_count ; i++) {
 		info->swapchain_buffers[i].image = images[i];
-		set_image_layout(
-			&info->cmd_buffer, images[i],
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-		);
+		image_layout_transition(info, images[i], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	}
 
 	for (uint32_t i = 0; i < image_count ; i++)
@@ -1116,13 +1043,11 @@ VkResult vulkan_update_texture(vulkan_info_t *info, texture_t *tex, stbi_uc* dat
 	vkUnmapMemory(info->device, tex->storage_memory);
 
 	image_layout_transition(info, tex->storage_image,
-		VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_LAYOUT_PREINITIALIZED,
 		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
 	);
 
 	image_layout_transition(info, tex->texture_image,
-		VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_LAYOUT_PREINITIALIZED,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
 	);

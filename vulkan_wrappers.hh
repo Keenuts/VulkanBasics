@@ -10,8 +10,7 @@ VkCommandBuffer command_begin_disposable(vulkan_info_t *info);
 void command_submit_disposable(vulkan_info_t *info, VkCommandBuffer cmd);
 
 /* Images */
-void image_layout_transition(vulkan_info_t *info, VkImage image, VkFormat format,
-											 VkImageLayout old_layout, VkImageLayout new_layout);
+void image_layout_transition(vulkan_info_t *info, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout);
 void image_create(vulkan_info_t *info, uint32_t w, uint32_t h,
 									VkImage *img, VkDeviceMemory *mem, VkDeviceSize *size,
 									VkFormat format, VkImageUsageFlags usage);

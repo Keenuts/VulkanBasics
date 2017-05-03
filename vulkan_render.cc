@@ -8,6 +8,7 @@
 
 #include "vulkan.hh"
 #include "vulkan_render.hh"
+#include "vulkan_wrappers.hh"
 #include "types.hh"
 
 void render_submit(vulkan_info_t *info, vulkan_frame_info_t *frame) {
@@ -90,12 +91,8 @@ void render_create_cmd(vulkan_info_t *info, vulkan_frame_info_t *frame) {
 																			 &info->current_buffer);
 	assert(res == VK_SUCCESS);
 
-	res = set_image_layout(&frame->command,
-								 info->swapchain_buffers[info->current_buffer].image,
-								 VK_IMAGE_ASPECT_COLOR_BIT,
-								 VK_IMAGE_LAYOUT_UNDEFINED,
-								 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-	//assert(res == VK_SUCCESS);
+	image_layout_transition(info, info->swapchain_buffers[info->current_buffer].image,
+								 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 	VkClearValue clear_values[2];
 	clear_values[0].color = {
