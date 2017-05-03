@@ -10,12 +10,12 @@ OBJ=								\
 	viewer.o					\
 	vulkan_core.o			\
 	window.o					\
-	objloader.o				\
 	vulkan_render.o		\
 	vulkan_wrappers.o	\
 	stb_image.o				\
 	tiny_obj_loader.o
 
+all:release shaders
 
 release: CXXFLAGS+=-O3
 release: viewer
