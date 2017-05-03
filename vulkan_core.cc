@@ -203,7 +203,7 @@ static void vulkan_create_queues(vulkan_info_t *info, queue_creation_info_t *que
 	vkGetDeviceQueue(info->device, queues->present_family_index, 0, &info->present_queue);
 }
 
-static VkResult vulkan_create_KHR_surface(vulkan_info_t *info) {
+static void vulkan_create_KHR_surface(vulkan_info_t *info) {
 	VkXcbSurfaceCreateInfoKHR create_info = {
 		.sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
 		.pNext = NULL,
@@ -212,47 +212,31 @@ static VkResult vulkan_create_KHR_surface(vulkan_info_t *info) {
 		.window = info->window.window
 	};
 
-	return vkCreateXcbSurfaceKHR(info->instance, &create_info, NULL, &info->surface);
+	VkResult res = vkCreateXcbSurfaceKHR(info->instance, &create_info, NULL, &info->surface);
+	assert(res == VK_SUCCESS);
 }
 
 template <typename VTYPE, VkResult(*F)(VkPhysicalDevice, VkSurfaceKHR, uint32_t*, VTYPE*)>
 auto vkGetter(uint32_t *count, VTYPE **array, VkPhysicalDevice dev, VkSurfaceKHR surface) {
 	VkResult res = F(dev, surface, count, NULL);
-	if (res != VK_SUCCESS)
-		return res;
-	if (*count <= 0)
-		return VK_INCOMPLETE;
+	assert(res == VK_SUCCESS && *count > 0);
 
 	*array = new VTYPE[*count];
 	if (!*array)
-		return VK_ERROR_OUT_OF_HOST_MEMORY;
+		throw VkException(VK_ERROR_OUT_OF_HOST_MEMORY);
 
 	res = F(dev, surface, count, *array);
-	if (res != VK_SUCCESS)
-		delete[] *array;
-	return res;
+	assert(res == VK_SUCCESS);
 }
 
-static VkResult vulkan_set_extents(vulkan_info_t *info, VkSurfaceCapabilitiesKHR *caps) {
+static void vulkan_set_extents(vulkan_info_t *info, VkSurfaceCapabilitiesKHR *caps) {
 	float ratio = (float)info->height / (float)info->width;
-	info->width = clamp(info->width, caps->minImageExtent.width,
-								 caps->maxImageExtent.width);
+	info->width = clamp(info->width, caps->minImageExtent.width, caps->maxImageExtent.width);
 	info->height = (float)(info->width * ratio);
-	info->height = clamp(info->height, caps->minImageExtent.height,
-								 caps->maxImageExtent.height);
-
-#ifdef LOG_VERBOSE
-	printf("[DEBUG] Min extents are %ux%u\n",
-				 caps->minImageExtent.width, caps->minImageExtent.height);
-	printf("[DEBUG] Max extents are %ux%u\n",
-				 caps->maxImageExtent.width, caps->maxImageExtent.height);
-#endif
-	printf("[INFO] Extents set to %ux%u\n", info->width, info->height);
-
-	return VK_SUCCESS;
+	info->height = clamp(info->height, caps->minImageExtent.height, caps->maxImageExtent.height);
 }
 
-static VkResult vulkan_create_swapchain(vulkan_info_t *info) {
+static void vulkan_create_swapchain(vulkan_info_t *info) {
 	VkResult res;
 	uint32_t nbr_formats;
 	uint32_t nbr_modes;
@@ -264,36 +248,16 @@ static VkResult vulkan_create_swapchain(vulkan_info_t *info) {
 	VkCompositeAlphaFlagBitsKHR composite_alpha_bits = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 	VkSwapchainCreateInfoKHR swapchain_info = { };
 
-	res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(info->physical_device,
-																								info->surface, &capabilities);
-	CHECK_VK(res);
-	res = vulkan_set_extents(info, &capabilities);
-	CHECK_VK(res);
+	res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(info->physical_device, info->surface, &capabilities);
+	assert(res == VK_SUCCESS);
 
-	res = vkGetter<VkSurfaceFormatKHR, vkGetPhysicalDeviceSurfaceFormatsKHR>
+	vulkan_set_extents(info, &capabilities);
+
+	vkGetter<VkSurfaceFormatKHR, vkGetPhysicalDeviceSurfaceFormatsKHR>
 			 (&nbr_formats, &supported_formats, info->physical_device, info->surface);
-
-	if (res != VK_SUCCESS)
-		goto ERROR_FORMATS;
-
-	res = vkGetter<VkPresentModeKHR, vkGetPhysicalDeviceSurfacePresentModesKHR>
+	vkGetter<VkPresentModeKHR, vkGetPhysicalDeviceSurfacePresentModesKHR>
 			 (&nbr_modes, &supported_modes, info->physical_device, info->surface);
-	if (res != VK_SUCCESS)
-		goto ERROR_PRESENT;
-
-	if ((nbr_formats == 1 && supported_formats[0].format == VK_FORMAT_UNDEFINED)
-		|| nbr_formats == 0) {
-		res = VK_INCOMPLETE;
-		goto ERROR;
-	}
-
-#ifdef LOG_VERBOSE
-	printf("[DEBUG] Supported formats KHR: ");
-	for (uint32_t i = 0; i < nbr_formats; i++)
-		printf("%u, ", (uint32_t)supported_formats[i].format);
-	printf("\n");
-	printf("[DEBUG] Selected format: %u\n", info->image_format);
-#endif
+	assert(nbr_formats > 0 && supported_formats[0].format != VK_FORMAT_UNDEFINED);
 
 	for (uint32_t i = 0; i < nbr_modes; i++) {
 		if (supported_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
@@ -306,7 +270,6 @@ static VkResult vulkan_create_swapchain(vulkan_info_t *info) {
 
 	info->color_space = supported_formats[0].colorSpace;
 	info->image_format = supported_formats[0].format;
-
 
 	swapchain_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	swapchain_info.pNext = NULL;
@@ -328,15 +291,11 @@ static VkResult vulkan_create_swapchain(vulkan_info_t *info) {
 	swapchain_info.clipped = VK_FALSE;
 	swapchain_info.oldSwapchain = VK_NULL_HANDLE;
 	
-	
 	res = vkCreateSwapchainKHR(info->device, &swapchain_info, NULL, &info->swapchain);
+	assert(res == VK_SUCCESS);
 
-ERROR:
 	delete[] supported_modes;
-ERROR_PRESENT:
 	delete[] supported_formats;
-ERROR_FORMATS:
-	return res;
 }
 
 static VkResult vulkan_create_command_buffer(vulkan_info_t *info)
@@ -423,24 +382,21 @@ VkResult set_image_layout(VkCommandBuffer *cmd_buffer, VkImage image,
 	return VK_SUCCESS;
 }
 
-static VkResult vulkan_initialize_swachain_images(vulkan_info_t *info) {
+static void vulkan_initialize_swapchain_images(vulkan_info_t *info) {
 	VkResult res;
 	uint32_t image_count = 0;
 	res = vkGetSwapchainImagesKHR(info->device, info->swapchain, &image_count, NULL);
-	CHECK_VK(res);
-	if (image_count == 0)
-		return VK_INCOMPLETE;
+	assert(image_count > 0 && res == VK_SUCCESS);
 
 	std::vector<VkImage> images = std::vector<VkImage>(image_count);
 	res = vkGetSwapchainImagesKHR(info->device, info->swapchain, &image_count, images.data());
-	CHECK_VK(res);
+	assert(res == VK_SUCCESS);
 
 	info->swapchain_buffers = new swapchain_buffer_t[image_count];
 	for (uint32_t i = 0; i < image_count ; i++) {
 		info->swapchain_buffers[i].image = images[i];
 		set_image_layout(
-			&info->cmd_buffer,
-			images[i],
+			&info->cmd_buffer, images[i],
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
@@ -452,10 +408,9 @@ static VkResult vulkan_initialize_swachain_images(vulkan_info_t *info) {
 
 	info->current_buffer = 0;
 	info->swapchain_images_count = image_count;
-	return res;
 }
 
-static VkResult vulkan_create_depth_buffer(vulkan_info_t *info) {
+static void vulkan_create_depth_buffer(vulkan_info_t *info) {
 	VkResult res = VK_SUCCESS;
 
 	VkImageCreateInfo image_info = {};
@@ -505,24 +460,23 @@ static VkResult vulkan_create_depth_buffer(vulkan_info_t *info) {
 	VkMemoryRequirements mem_reqs;
 	info->depth_buffer.format = depth_format;
 	res = vkCreateImage(info->device, &image_info, NULL, &info->depth_buffer.image);
-	CHECK_VK(res);
+	assert(res == VK_SUCCESS);
 
 	vkGetImageMemoryRequirements(info->device, info->depth_buffer.image, &mem_reqs);
 
 	alloc_info.allocationSize = mem_reqs.size;
 	res = vkAllocateMemory(info->device, &alloc_info, NULL,
 												 &info->depth_buffer.memory);
-	CHECK_VK(res);
+	if (res != VK_SUCCESS)
+		throw VkException(res);
 
 	res = vkBindImageMemory(info->device, info->depth_buffer.image,
 													info->depth_buffer.memory, 0);
-	CHECK_VK(res);
+	assert(res == VK_SUCCESS);
 
 	view_info.image = info->depth_buffer.image;
 	res = vkCreateImageView(info->device, &view_info, NULL, &info->depth_buffer.view);
-	CHECK_VK(res);
-
-	return res;
+	assert(res == VK_SUCCESS);
 }
 
 static VkResult vulkan_create_uniform_buffer(vulkan_info_t *info, uint32_t size) {
@@ -580,7 +534,7 @@ VkResult vulkan_update_uniform_buffer(vulkan_info_t *info, scene_info_t *payload
 	return res;
 }
 
-static VkResult vulkan_create_pipeline_layout(vulkan_info_t *info) {
+static void vulkan_create_pipeline_layout(vulkan_info_t *info) {
 	VkResult res = VK_SUCCESS;
 
 	VkDescriptorSetLayoutBinding layout_binding = {};
@@ -598,9 +552,10 @@ static VkResult vulkan_create_pipeline_layout(vulkan_info_t *info) {
 	descriptor_layout.pBindings = &layout_binding;
 
 	info->descriptor_layouts = new VkDescriptorSetLayout[NUM_DESCRIPTORS];
-	res = vkCreateDescriptorSetLayout(info->device, &descriptor_layout, NULL,
-																		info->descriptor_layouts);
-	CHECK_VK(res);
+	if (info->descriptor_layouts == NULL)
+		throw VkException(VK_ERROR_OUT_OF_HOST_MEMORY);
+	res = vkCreateDescriptorSetLayout(info->device, &descriptor_layout, NULL, info->descriptor_layouts);
+	assert(res == VK_SUCCESS);
 	
 	VkPipelineLayoutCreateInfo pipeline_layout = {};
 	pipeline_layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -611,14 +566,11 @@ static VkResult vulkan_create_pipeline_layout(vulkan_info_t *info) {
 	pipeline_layout.setLayoutCount = NUM_DESCRIPTORS;	
 	pipeline_layout.pSetLayouts = info->descriptor_layouts;
 
-	res = vkCreatePipelineLayout(info->device, &pipeline_layout, NULL,
-															 &info->pipeline_layout);
-	CHECK_VK(res);
-
-	return res;
+	res = vkCreatePipelineLayout(info->device, &pipeline_layout, NULL, &info->pipeline_layout);
+	assert(res == VK_SUCCESS);
 }
 
-static VkResult vulkan_create_descriptor_pool(vulkan_info_t *info) {
+static void vulkan_create_descriptor_pool(vulkan_info_t *info) {
 	VkDescriptorPoolSize type_count[1];
 	type_count[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	type_count[0].descriptorCount = 1;
@@ -630,8 +582,8 @@ static VkResult vulkan_create_descriptor_pool(vulkan_info_t *info) {
 	pool_info.poolSizeCount = 1;
 	pool_info.pPoolSizes = type_count;
 
-	return vkCreateDescriptorPool(info->device, &pool_info, NULL,
-																&info->descriptor_pool);
+	VkResult res = vkCreateDescriptorPool(info->device, &pool_info, NULL, &info->descriptor_pool);
+	assert(res == VK_SUCCESS);
 }
 
 static VkResult vulkan_create_descriptors(vulkan_info_t *info) {
@@ -1087,17 +1039,12 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	vulkan_create_KHR_surface(info);
 	vulkan_create_queues(info, &queue_info);
 	vulkan_create_command_buffer(info);
-	res = vulkan_create_swapchain(info);
-	CHECK_VK(res);
-	res = vulkan_initialize_swachain_images(info);
-	CHECK_VK(res);
-	LOG("Swapchain initialized");
-	res = vulkan_create_depth_buffer(info);
-	CHECK_VK(res);
-	LOG("Depth buffer initialized");
-	res = vulkan_create_descriptor_pool(info);
-	CHECK_VK(res);
-	LOG("Descriptor pool initialized");
+	vulkan_create_swapchain(info);
+	vulkan_initialize_swapchain_images(info);
+	vulkan_create_depth_buffer(info);
+	vulkan_create_descriptor_pool(info);
+
+	printf("[INFO] Extents set to %ux%u\n", info->width, info->height);
 
 	//END STATIC ZONE
 
@@ -1105,9 +1052,7 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	LOG("Uniform buffer initialized");
 	CHECK_VK(res);
 
-	res = vulkan_create_pipeline_layout(info);
-	CHECK_VK(res);
-	LOG("Pipeline layout initialized.");
+	vulkan_create_pipeline_layout(info);
 	res = vulkan_create_descriptors(info);
 	CHECK_VK(res);
 	LOG("Descriptors initialized.");
