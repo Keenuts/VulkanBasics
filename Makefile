@@ -13,7 +13,8 @@ OBJ=								\
 	objloader.o				\
 	vulkan_render.o		\
 	vulkan_wrappers.o	\
-	stb_image.o
+	stb_image.o				\
+	tiny_obj_loader.o
 
 
 release: CXXFLAGS+=-O3

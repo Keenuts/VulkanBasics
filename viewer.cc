@@ -1,14 +1,16 @@
+#include <vector>
+#include <sstream>
 #include <time.h>
 
 #include "helpers.hh"
-#include "objloader.hh"
 #include "stb_image.h"
+#include "tiny_obj_loader.hh"
 #include "vulkan.hh"
 #include "vulkan_exception.hh"
 #include "vulkan_render.hh"
 
-#define MESH_PATH "assets/df9/model.obj"
-#define MESH_DIFFUSE "assets/df9/tex_albedo.jpg"
+#define MESH_PATH "assets/r5d4/model.obj"
+#define MESH_DIFFUSE "assets/r5d4/tex_albedo.jpg"
 
 #define SHADER_COUNT 2
 #define FRAG_SHADER "assets/shaders/diffuse_frag.spv"
@@ -16,6 +18,57 @@
 
 #define FRAMERATE 60.0f
 #define CLOCKS_PER_FRAME ((long int)((1.0F / FRAMERATE) * CLOCKS_PER_SEC))
+#define DEG2RAD (0.20943951023f)
+
+
+static bool load_model(const char* path, model_t *model) {
+	tinyobj::attrib_t attrib;
+	std::vector<tinyobj::shape_t> shapes;
+	std::vector<tinyobj::material_t> materials;
+	std::string err;
+	
+	bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, path);
+	if (!ret)
+		return false;
+	
+	std::vector<vertex_t> vertices;
+	
+	for (tinyobj::shape_t& s : shapes) {
+		for (tinyobj::index_t& idx : s.mesh.indices) {
+			vertex_t v;
+			v.pos = {
+				attrib.vertices[3 * idx.vertex_index + 0],
+				attrib.vertices[3 * idx.vertex_index + 1],
+				attrib.vertices[3 * idx.vertex_index + 2]
+			};
+
+			v.nrm = {
+				attrib.normals[3 * idx.normal_index + 0],
+				attrib.normals[3 * idx.normal_index + 1],
+				attrib.normals[3 * idx.normal_index + 2]
+			};
+
+			v.uv = {
+				attrib.texcoords[2 * idx.texcoord_index + 0],
+				attrib.texcoords[2 * idx.texcoord_index + 1],
+			};
+			vertices.push_back(v);
+		}
+	}
+
+	printf("[INFO] Loading model %s [%zu vertices]\n", path, vertices.size());
+
+	model->count = vertices.size();
+
+	model->vertices = new vertex_t[model->count];
+	if (model->vertices == NULL)
+		return false;
+
+	for (uint64_t i = 0; i < model->count; i++)
+		model->vertices[i] = vertices[i];
+
+	return true;
+}
 
 //This main is used as a draft, don't worry
 int main(int argc, char** argv) {
@@ -81,7 +134,7 @@ int main(int argc, char** argv) {
 	frame_info.command = vulkan_info.cmd_buffer;
 
 
-	glm::vec3 camera = glm::vec3(3, 5, 10);
+	glm::vec3 camera = glm::vec3(3, 1, 3);
 	glm::vec3 origin = glm::vec3(0, 0, 0);
 	glm::vec3 up = glm::vec3(0, 1, 0);
 
@@ -105,7 +158,6 @@ int main(int argc, char** argv) {
 		clock_t start_tick = clock();
 
 		float angle = 50.0f;
-#define DEG2RAD (0.20943951023f)
 
 		scene.model = glm::rotate(scene.model, angle * delta_time * DEG2RAD, glm::vec3(0,1,0));
 		vulkan_update_uniform_buffer(&vulkan_info, &scene);
