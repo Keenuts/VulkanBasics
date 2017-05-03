@@ -406,7 +406,7 @@ static void vulkan_create_depth_buffer(vulkan_info_t *info) {
 	assert(res == VK_SUCCESS);
 }
 
-static VkResult vulkan_create_uniform_buffer(vulkan_info_t *info, uint32_t size) {
+static void vulkan_create_uniform_buffer(vulkan_info_t *info, uint32_t size) {
 	VkResult res = VK_SUCCESS;
 
 	VkBufferCreateInfo buf_info = {};
@@ -420,7 +420,7 @@ static VkResult vulkan_create_uniform_buffer(vulkan_info_t *info, uint32_t size)
 	buf_info.flags = 0;
 
 	res = vkCreateBuffer(info->device, &buf_info, NULL, &info->uniform_buffer.buffer);
-	CHECK_VK(res);
+	assert(res == VK_SUCCESS);
 	
 	VkMemoryRequirements mem_reqs;
 	vkGetBufferMemoryRequirements(info->device, info->uniform_buffer.buffer, &mem_reqs);
@@ -436,47 +436,56 @@ static VkResult vulkan_create_uniform_buffer(vulkan_info_t *info, uint32_t size)
 																				 | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 																				&alloc_info.memoryTypeIndex);
 	if (!success)
-		return VK_INCOMPLETE;
+		throw VkException(VK_INCOMPLETE);
 
 	res = vkAllocateMemory(info->device, &alloc_info, NULL, &info->uniform_buffer.memory);
-	CHECK_VK(res);
+	if (res != VK_SUCCESS)
+		throw VkException(res);
 
 	info->uniform_buffer.descriptor.buffer = info->uniform_buffer.buffer;
 	info->uniform_buffer.descriptor.offset = 0;
   info->uniform_buffer.descriptor.range = size; 
 	res = vkBindBufferMemory(info->device, info->uniform_buffer.buffer,
 													 	info->uniform_buffer.memory, 0);
-	return res;
+	assert(res == VK_SUCCESS);
 }
 
-VkResult vulkan_update_uniform_buffer(vulkan_info_t *info, scene_info_t *payload) {
+void vulkan_update_uniform_buffer(vulkan_info_t *info, scene_info_t *payload) {
 	VkResult res = VK_SUCCESS;
 
 	void *data = NULL;
 	res = vkMapMemory(info->device, info->uniform_buffer.memory, 0, sizeof(payload), 0,
 										(void**)&data);
-	CHECK_VK(res);
+	if (res != VK_SUCCESS)
+		throw VkException(res);
 	memcpy(data, payload, info->uniform_buffer.descriptor.range);
 	vkUnmapMemory(info->device, info->uniform_buffer.memory);
-	return res;
 }
 
 static void vulkan_create_pipeline_layout(vulkan_info_t *info) {
 	VkResult res = VK_SUCCESS;
 
-	VkDescriptorSetLayoutBinding layout_binding = {};
-	layout_binding.binding = 0;
-	layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	layout_binding.descriptorCount = 1;
-	layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-	layout_binding.pImmutableSamplers = NULL;
+	VkDescriptorSetLayoutBinding uniform_binding = {};
+	uniform_binding.binding = 0;
+	uniform_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	uniform_binding.descriptorCount = 1;
+	uniform_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	uniform_binding.pImmutableSamplers = NULL;
 
+	VkDescriptorSetLayoutBinding sampler_binding = {};
+	sampler_binding.binding = 1;
+	sampler_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	sampler_binding.descriptorCount = 1;
+	sampler_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	sampler_binding.pImmutableSamplers = NULL;
+
+	VkDescriptorSetLayoutBinding bindings[] = { uniform_binding, sampler_binding };
 
 	VkDescriptorSetLayoutCreateInfo descriptor_layout = {};
 	descriptor_layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	descriptor_layout.pNext = NULL;
-	descriptor_layout.bindingCount = 1;
-	descriptor_layout.pBindings = &layout_binding;
+	descriptor_layout.bindingCount = 2;
+	descriptor_layout.pBindings = bindings;
 
 	info->descriptor_layouts = new VkDescriptorSetLayout[NUM_DESCRIPTORS];
 	if (info->descriptor_layouts == NULL)
@@ -498,15 +507,17 @@ static void vulkan_create_pipeline_layout(vulkan_info_t *info) {
 }
 
 static void vulkan_create_descriptor_pool(vulkan_info_t *info) {
-	VkDescriptorPoolSize type_count[1];
+	VkDescriptorPoolSize type_count[2];
 	type_count[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	type_count[0].descriptorCount = 1;
+	type_count[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	type_count[1].descriptorCount = 1;
 
 	VkDescriptorPoolCreateInfo pool_info = {};
 	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	pool_info.pNext = NULL;
-	pool_info.maxSets = 1;
-	pool_info.poolSizeCount = 1;
+	pool_info.maxSets = 2;
+	pool_info.poolSizeCount = 2;
 	pool_info.pPoolSizes = type_count;
 
 	VkResult res = vkCreateDescriptorPool(info->device, &pool_info, NULL, &info->descriptor_pool);
@@ -527,7 +538,7 @@ static VkResult vulkan_create_descriptors(vulkan_info_t *info) {
 	res = vkAllocateDescriptorSets(info->device, alloc_info, info->descriptor_sets);
 	CHECK_VK(res);
 
-	VkWriteDescriptorSet writes[1];
+	VkWriteDescriptorSet writes[2];
 
 	writes[0] = {};
 	writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -539,12 +550,27 @@ static VkResult vulkan_create_descriptors(vulkan_info_t *info) {
 	writes[0].dstArrayElement = 0;
 	writes[0].dstBinding = 0;
 
-	vkUpdateDescriptorSets(info->device, 1, writes, 0, NULL);
+	VkDescriptorImageInfo image_info = { };
+	image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	image_info.imageView = info->texture_view;
+	image_info.sampler = info->texture_sampler;
+
+	writes[1] = {};
+	writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[1].pNext = NULL;
+	writes[1].dstSet = info->descriptor_sets[0];
+	writes[1].descriptorCount = 1;
+	writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	writes[1].pImageInfo = &image_info;
+	writes[1].dstArrayElement = 0;
+	writes[1].dstBinding = 1;
+
+	vkUpdateDescriptorSets(info->device, 2, writes, 0, NULL);
 
 	return VK_SUCCESS;
 }
 
-VkResult vulkan_create_render_pass(vulkan_info_t *info) {
+void vulkan_create_render_pass(vulkan_info_t *info) {
 	VkAttachmentDescription attachments[2];
 	attachments[0].flags = 0;
 	attachments[0].format = info->image_format;
@@ -597,7 +623,8 @@ VkResult vulkan_create_render_pass(vulkan_info_t *info) {
 	renderPassInfo.dependencyCount = 0;
 	renderPassInfo.pDependencies = NULL;
 
-	return vkCreateRenderPass(info->device, &renderPassInfo, NULL, &info->render_pass);
+	VkResult res = vkCreateRenderPass(info->device, &renderPassInfo, NULL, &info->render_pass);
+	assert(res == VK_SUCCESS);
 }
 
 struct shader_t {
@@ -628,17 +655,17 @@ static bool load_shader(const char* path, shader_t *shader) {
 	return ret > 0;
 }
 
-VkResult vulkan_load_shaders(vulkan_info_t *info, uint32_t count,
+void vulkan_load_shaders(vulkan_info_t *info, uint32_t count,
 														 const char **paths, VkShaderStageFlagBits *flags) {
 	VkResult res = VK_SUCCESS;
 	info->shader_stages = new VkPipelineShaderStageCreateInfo[count];
 	if (info->shader_stages == NULL)
-		return VK_ERROR_OUT_OF_HOST_MEMORY;
+		throw VkException(VK_ERROR_OUT_OF_HOST_MEMORY);
 
 	for (uint32_t i = 0; i < count; i++) {
 		shader_t shader = { 0 };
 		if (!load_shader(paths[i], &shader))
-			return VK_INCOMPLETE;
+			throw VkException(VK_INCOMPLETE);
 
 		info->shader_stages[i].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 		info->shader_stages[i].pNext = NULL;
@@ -654,16 +681,14 @@ VkResult vulkan_load_shaders(vulkan_info_t *info, uint32_t count,
 		module_info.codeSize = shader.length * sizeof(uint32_t);
 		module_info.pCode = shader.bytes;
 
-		res = vkCreateShaderModule(info->device, &module_info, NULL,
-															 &info->shader_stages[i].module);
+		res = vkCreateShaderModule(info->device, &module_info, NULL, &info->shader_stages[i].module);
+		assert(res == VK_SUCCESS);
 		delete[] shader.bytes;
-		CHECK_VK(res);
 	}
 	info->shader_stages_count = count;
-	return res;
 }
 
-static VkResult vulkan_create_framebuffers(vulkan_info_t *info) {
+static void vulkan_create_framebuffers(vulkan_info_t *info) {
 	VkResult res = VK_SUCCESS;
 	VkImageView attachments[2];
 	attachments[1] = info->depth_buffer.view;
@@ -682,26 +707,23 @@ static VkResult vulkan_create_framebuffers(vulkan_info_t *info) {
 	uint32_t i = 0;
 	info->framebuffers = new VkFramebuffer[info->swapchain_images_count];
 	if (info->framebuffers == NULL)
-		return VK_ERROR_OUT_OF_HOST_MEMORY;
+		throw VkException(VK_ERROR_OUT_OF_HOST_MEMORY);
 
 	for (i = 0; i < info->swapchain_images_count; i++) {
 			attachments[0] = info->swapchain_buffers[i].view;
-			res = vkCreateFramebuffer(info->device, &framebuffer_info, NULL,
-																&info->framebuffers[i]);
-			CHECK_VK(res);
+			res = vkCreateFramebuffer(info->device, &framebuffer_info, NULL, &info->framebuffers[i]);
+			assert(res == VK_SUCCESS);
 	}
-
-	return VK_SUCCESS;
 }
 
-static VkResult vulkan_create_vertex_bindings(vulkan_info_t *info) {
+static void vulkan_create_vertex_bindings(vulkan_info_t *info) {
 	info->vertex_binding.binding = 0;
 	info->vertex_binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 	info->vertex_binding.stride = sizeof(vertex_t);
 	
 	info->vertex_attribute = new VkVertexInputAttributeDescription[3];
 	if (info->vertex_attribute == NULL)
-		return VK_ERROR_OUT_OF_HOST_MEMORY;
+		throw VkException(VK_ERROR_OUT_OF_HOST_MEMORY);
 
 	//POSITION
 	info->vertex_attribute[0].location = 0;
@@ -718,11 +740,9 @@ static VkResult vulkan_create_vertex_bindings(vulkan_info_t *info) {
 	info->vertex_attribute[2].binding = 0;
 	info->vertex_attribute[2].format = VK_FORMAT_R32G32_SFLOAT;
 	info->vertex_attribute[2].offset = 4 * 3 + 4 * 3; //Stored as RGBA
-
-	return VK_SUCCESS;
 }
 
-VkResult vulkan_create_vertex_buffer(vulkan_info_t *info, uint32_t size,
+void vulkan_create_vertex_buffer(vulkan_info_t *info, uint32_t size,
 																						data_buffer_t *buffer) {
 	VkResult res = VK_SUCCESS;
 
@@ -737,7 +757,8 @@ VkResult vulkan_create_vertex_buffer(vulkan_info_t *info, uint32_t size,
 	buffer_info.pQueueFamilyIndices = NULL;
 
 	res = vkCreateBuffer(info->device, &buffer_info, NULL, &buffer->buffer);
-	CHECK_VK(res);
+	if (res != VK_SUCCESS)
+		throw VkException(res);
 
 	VkMemoryRequirements requirements;
 	vkGetBufferMemoryRequirements(info->device, buffer->buffer, &requirements);
@@ -748,43 +769,35 @@ VkResult vulkan_create_vertex_buffer(vulkan_info_t *info, uint32_t size,
 	allocation_info.allocationSize = size;
 	allocation_info.memoryTypeIndex = 0;
 	bool success = find_memory_type_index(info, requirements.memoryTypeBits,
-																				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-																					| VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+																				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 																				&allocation_info.memoryTypeIndex);
+	assert(success);
 	buffer->descriptor.range = size;
-	if (!success)
-		return VK_INCOMPLETE;
-	return vkAllocateMemory(info->device, &allocation_info, NULL, &buffer->memory);
+	res = vkAllocateMemory(info->device, &allocation_info, NULL, &buffer->memory);
+	assert(res == VK_SUCCESS);
 }
 
-VkResult vulkan_update_vertex_buffer(vulkan_info_t *info, data_buffer_t *buffer,
-																		 vertex_t *vertices, uint32_t count) {
+void vulkan_update_vertex_buffer(vulkan_info_t *info, data_buffer_t *buffer, vertex_t *vertices, uint32_t count) {
 	void *ptr = NULL;
 	uint32_t data_size = count * sizeof(vertex_t);
 	VkResult res = VK_SUCCESS;
 
-	if (buffer->descriptor.range < data_size) {
-		LOG("Tried to write more bytes than there is in a buffer");
-		return VK_INCOMPLETE;
-	}
+	if (buffer->descriptor.range < data_size)
+		assert(0 && "Tried to write more bytes than there is in a buffer");
 
 	res = vkMapMemory(info->device, info->vertex_buffer.memory, 0, data_size, 0, &ptr);
-	CHECK_VK(res);
+	assert(res == VK_SUCCESS);
 
 	memcpy(ptr, vertices, data_size);
 	vkUnmapMemory(info->device, buffer->memory);
 
 	res = vkBindBufferMemory(info->device, buffer->buffer, buffer->memory, 0);
-	CHECK_VK(res);
-
+	assert(res == VK_SUCCESS);
 	info->vertex_count = count;
-	return VK_SUCCESS;
 }
 
 __attribute__((__used__))
-static VkResult vulkan_create_simple_vertex_buffer(vulkan_info_t *info) {
-	VkResult res = VK_SUCCESS;
-
+static void vulkan_create_simple_vertex_buffer(vulkan_info_t *info) {
 	vertex_t triangle[] = {
 		{ { -1, 0, 0 }, { 0, 0, 1 }, { 1, 1 } },
 		{ { 0, 1, 0 }, { 0, 0, 1 }, { 1, 0 } },
@@ -794,13 +807,11 @@ static VkResult vulkan_create_simple_vertex_buffer(vulkan_info_t *info) {
 	uint32_t buffer_size = sizeof(triangle);
 	info->vertex_count += 3;
 
-	res = vulkan_create_vertex_buffer(info, buffer_size , &info->vertex_buffer);
-	CHECK_VK(res);
-	res = vulkan_update_vertex_buffer(info, &info->vertex_buffer, triangle, 3);
-	return res;
+	vulkan_create_vertex_buffer(info, buffer_size , &info->vertex_buffer);
+	vulkan_update_vertex_buffer(info, &info->vertex_buffer, triangle, 3);
 }
 
-void vulkan_setup_viewport(vulkan_info_t *info) {
+static void vulkan_setup_viewport(vulkan_info_t *info) {
 	info->viewport.x = 0;
 	info->viewport.y = 0;
 	info->viewport.width = info->width;
@@ -809,21 +820,21 @@ void vulkan_setup_viewport(vulkan_info_t *info) {
 	info->viewport.maxDepth = 1.0f;
 }
 
-void vulkan_setup_scissor(vulkan_info_t *info) {
+static void vulkan_setup_scissor(vulkan_info_t *info) {
 	info->scissor.extent.width = info->width;
 	info->scissor.extent.height = info->height;
 	info->scissor.offset.x = 0;
 	info->scissor.offset.y = 0;
 }
 
-VkResult vulkan_create_pipeline(vulkan_info_t *info) {
+static void vulkan_create_pipeline(vulkan_info_t *info) {
 	VkDynamicState dynamic_state_enable[VK_DYNAMIC_STATE_RANGE_SIZE];
 	memset(dynamic_state_enable, 0, sizeof dynamic_state_enable);
 
 	VkPipelineDynamicStateCreateInfo dynamic_state = {};
 	dynamic_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
 	dynamic_state.pNext = NULL;
-	dynamic_state.flags = 0;
+		dynamic_state.flags = 0;
 	dynamic_state.dynamicStateCount = 0;
 	dynamic_state.pDynamicStates = dynamic_state_enable;
 
@@ -947,18 +958,17 @@ VkResult vulkan_create_pipeline(vulkan_info_t *info) {
 	pipeline.basePipelineHandle = VK_NULL_HANDLE;
 	pipeline.basePipelineIndex = 0;
 
-	return vkCreateGraphicsPipelines(info->device, VK_NULL_HANDLE,
-																	 1, &pipeline, NULL, &info->pipeline);
+	VkResult res = vkCreateGraphicsPipelines(info->device, VK_NULL_HANDLE, 1, &pipeline, NULL, &info->pipeline);
+	assert(res == VK_SUCCESS);
 }
 
-VkResult vulkan_initialize(vulkan_info_t *info) {
+void vulkan_initialize(vulkan_info_t *info) {
 	LOG("Initializing Vulkan...");
 	
 	queue_creation_info_t queue_info = { 0 };
-	VkResult res;
 
-	if (!create_window(&info->window, info->width, info->height))
-		return VK_INCOMPLETE;
+	bool success = create_window(&info->window, info->width, info->height);
+	assert(success);
 
 	vulkan_startup(info);
 	vulkan_initialize_devices(info);
@@ -971,41 +981,29 @@ VkResult vulkan_initialize(vulkan_info_t *info) {
 	vulkan_create_depth_buffer(info);
 	vulkan_create_descriptor_pool(info);
 
-	printf("[INFO] Extents set to %ux%u\n", info->width, info->height);
-
-	//END STATIC ZONE
-
-	res = vulkan_create_uniform_buffer(info, sizeof(scene_info_t));
-	LOG("Uniform buffer initialized");
-	CHECK_VK(res);
-
-	vulkan_create_pipeline_layout(info);
-	res = vulkan_create_descriptors(info);
-	CHECK_VK(res);
-	LOG("Descriptors initialized.");
-	res = vulkan_create_render_pass(info);
-	CHECK_VK(res);
-	LOG("Render pass created.");
-
-	vulkan_setup_scissor(info);
-	vulkan_setup_viewport(info);
-
-	//SHADERS OLD POSITION
-	
-	res = vulkan_create_framebuffers(info);
-	CHECK_VK(res);
-	LOG("Framebuffers initialized.");
-	res = vulkan_create_vertex_bindings(info);
-	CHECK_VK(res);
-	LOG("Vertex bindings done.");
-	
 	delete[] queue_info.family_props;
-
-	LOG("Vulkan initialized.");
-	return VK_SUCCESS;
+	printf("[INFO] Intialization done: new window %ux%u\n", info->width, info->height);
 }
 
-VkResult vulkan_create_texture(vulkan_info_t *info, texture_t *tex) {
+void vulkan_create_rendering_pipeline(vulkan_info_t *info) {
+
+	vulkan_create_uniform_buffer(info, sizeof(scene_info_t));
+	LOG("Uniform buffer initialized");
+
+	vulkan_create_pipeline_layout(info);
+	vulkan_create_descriptors(info);
+	vulkan_create_render_pass(info);
+	vulkan_setup_scissor(info);
+	vulkan_setup_viewport(info);
+	vulkan_create_framebuffers(info);
+	vulkan_create_vertex_bindings(info);
+	
+	vulkan_create_pipeline(info);
+
+	LOG("Pipeline ready.");
+}
+
+void vulkan_create_texture(vulkan_info_t *info, texture_t *tex) {
 	image_create(info, tex->width, tex->height, &tex->storage_image,
 										 &tex->storage_memory, &tex->size,
 										 VK_FORMAT_R8G8B8A8_UNORM,
@@ -1015,14 +1013,15 @@ VkResult vulkan_create_texture(vulkan_info_t *info, texture_t *tex) {
 										 VK_FORMAT_R8G8B8A8_UNORM,
 										 VK_IMAGE_USAGE_TRANSFER_DST_BIT |
 										 VK_IMAGE_USAGE_SAMPLED_BIT);
-	return VK_SUCCESS;
+
+	image_view_create(info, tex->texture_image, VK_FORMAT_R8G8B8A8_UNORM, &info->texture_view);
+	image_sampler_create(info, &info->texture_sampler);
 }
 
-VkResult vulkan_update_texture(vulkan_info_t *info, texture_t *tex, stbi_uc* data) {
-	VkResult res = VK_SUCCESS;
+void vulkan_update_texture(vulkan_info_t *info, texture_t *tex, stbi_uc* data) {
 	void *ptr = NULL;
-	res = vkMapMemory(info->device, tex->storage_memory, 0, tex->size, 0, &ptr);
-	CHECK_VK(res);
+	VkResult res = vkMapMemory(info->device, tex->storage_memory, 0, tex->size, 0, &ptr);
+	assert(res == VK_SUCCESS);
 
 	VkImageSubresource subresource = {};
 	subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1053,7 +1052,6 @@ VkResult vulkan_update_texture(vulkan_info_t *info, texture_t *tex, stbi_uc* dat
 	);
 
 	image_copy(info, tex->storage_image, tex->texture_image, tex->width, tex->height);
-	return res;
 }
 
 

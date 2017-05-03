@@ -13,8 +13,9 @@ layout (location = 0) in vec3 position;
 layout (location = 1) in vec3 normal;
 layout (location = 2) in vec2 uv;
 
-layout (location = 0) out vec4 color_out;
-layout (location = 1) out vec3 normal_out;
+layout (location = 0) out vec4 out_color;
+layout (location = 1) out vec3 out_normal;
+layout (location = 2) out vec2 out_uv;
 
 out gl_PerVertex {
         vec4 gl_Position;
@@ -24,7 +25,8 @@ void main()
 {
 	mat4 MVP = udata.clip * udata.projection * udata.view * udata.model;
 
-	color_out = vec4(0.8, 0.9, 0.9, 1.0);
-	normal_out = (udata.model * normal.xyzz).xyz;
+	out_color = vec4(1.0, 1.0, 1.0, 1.0);
+	out_uv = uv;
+	out_normal = (udata.model * normal.xyzz).xyz;
 	gl_Position = MVP * vec4(position, 1.0);
 }

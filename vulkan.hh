@@ -87,27 +87,27 @@ struct vulkan_info_t {
 	VkVertexInputBindingDescription vertex_binding;
 	VkVertexInputAttributeDescription *vertex_attribute;
 	VkRect2D scissor;
+	
+	VkImageView texture_view;
+	VkSampler texture_sampler;
 };
 
-VkResult vulkan_initialize(vulkan_info_t *info);
-VkResult vulkan_create_pipeline(vulkan_info_t *info);
+void vulkan_initialize(vulkan_info_t *info);
+void vulkan_create_rendering_pipeline(vulkan_info_t *info);
 
-VkResult vulkan_create_vertex_buffer(vulkan_info_t *i, uint32_t size, data_buffer_t *b);
-VkResult vulkan_create_texture(vulkan_info_t *info, texture_t *tex);
+void vulkan_create_texture(vulkan_info_t *info, texture_t *tex);
+void vulkan_update_texture(vulkan_info_t *info, texture_t *tex, stbi_uc* data);
 
-VkResult vulkan_load_shaders(vulkan_info_t *info, uint32_t count,
+void vulkan_load_shaders(vulkan_info_t *info, uint32_t count,
 														 const char **paths, VkShaderStageFlagBits *flags);
 
-VkResult vulkan_update_texture(vulkan_info_t *info, texture_t *tex, stbi_uc* data);
-VkResult vulkan_update_uniform_buffer(vulkan_info_t *info, scene_info_t *payload);
-VkResult vulkan_update_vertex_buffer(vulkan_info_t *i, data_buffer_t *b,
-																		 vertex_t *vtx, uint32_t count);
+void vulkan_create_vertex_buffer(vulkan_info_t *i, uint32_t size, data_buffer_t *b);
+void vulkan_update_vertex_buffer(vulkan_info_t *i, data_buffer_t *b, vertex_t *vtx, uint32_t count);
 
-VkResult vulkan_begin_command_buffer(vulkan_info_t *info);
-VkResult vulkan_render_frame(vulkan_info_t *info);
+void vulkan_update_uniform_buffer(vulkan_info_t *info, scene_info_t *payload);
+
+void vulkan_begin_command_buffer(vulkan_info_t *info);
+void vulkan_render_frame(vulkan_info_t *info);
 
 void vulkan_unload_shaders(vulkan_info_t *info, uint32_t count);
 void vulkan_cleanup(vulkan_info_t *info);
-
-//HELPERS
-bool find_memory_type_index(vulkan_info_t *info, uint32_t type, VkFlags flags, uint32_t *res);

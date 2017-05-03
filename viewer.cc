@@ -4,6 +4,7 @@
 #include "objloader.hh"
 #include "stb_image.h"
 #include "vulkan.hh"
+#include "vulkan_exception.hh"
 #include "vulkan_render.hh"
 
 #define MESH_PATH "assets/df9/model.obj"
@@ -23,9 +24,12 @@ int main(int argc, char** argv) {
 	vulkan_info_t vulkan_info = { 0 };
 	vulkan_info.width = 500;
 	vulkan_info.height = 500;
-
-	VkResult res = vulkan_initialize(&vulkan_info);
-	assert(res == VK_SUCCESS);
+	try {
+	vulkan_initialize(&vulkan_info);
+	} catch (VkException e) {
+		printf("Exception: %s\n", vktostring(e.what()));
+		return 1;
+	}
 
 	//=========== ASSETS LOADING
 	model_t model = { 0 };
@@ -39,42 +43,35 @@ int main(int argc, char** argv) {
 															STBI_rgb_alpha);
 	assert(pixels);
 
-	res = vulkan_create_texture(&vulkan_info, &texture);
-	assert(res == VK_SUCCESS);
-	res = vulkan_update_texture(&vulkan_info, &texture, pixels);
-	assert(res == VK_SUCCESS);
+	vulkan_create_texture(&vulkan_info, &texture);
+	vulkan_update_texture(&vulkan_info, &texture, pixels);
 
 	stbi_image_free(pixels);
 
-//END IMAGE
 	printf("[INFO] Loading a texture %dx%d\n", texture.width, texture.height);
+//END IMAGE
 
 	const char *shaders_paths[SHADER_COUNT] = { VERT_SHADER, FRAG_SHADER };
 	VkShaderStageFlagBits shaders_flags[SHADER_COUNT] = {
 		VK_SHADER_STAGE_VERTEX_BIT, VK_SHADER_STAGE_FRAGMENT_BIT
 	};
 
-	res = vulkan_load_shaders(&vulkan_info, SHADER_COUNT, shaders_paths, shaders_flags);
-	if (res != VK_SUCCESS) {
-		printf("[ERROR] Unable to load a shader\n");
-		return 1;
-	}
+	vulkan_load_shaders(&vulkan_info, SHADER_COUNT, shaders_paths, shaders_flags);
 	printf("[INFO] %d shaders loaded.\n", SHADER_COUNT);
 
 	//=========== RENDERING SETUP
-	printf("[INFO] Creating vertex buffer.\n");
-	res = vulkan_create_vertex_buffer(&vulkan_info, model.count * sizeof(vertex_t),
-																		&vulkan_info.vertex_buffer);
-	CHECK_VK(res);
-	printf("[INFO] Setting vertex buffer data.\n");
-	res = vulkan_update_vertex_buffer(&vulkan_info, &vulkan_info.vertex_buffer,
-																		model.vertices, model.count);
-	CHECK_VK(res);
+	try {
 
-	res = vulkan_create_pipeline(&vulkan_info);
-	CHECK_VK(res);
-	printf("[INFO] Done.\n");
+		vulkan_create_vertex_buffer(&vulkan_info, model.count * sizeof(vertex_t), &vulkan_info.vertex_buffer);
+		vulkan_update_vertex_buffer(&vulkan_info, &vulkan_info.vertex_buffer, model.vertices, model.count);
+		printf("[INFO] Vertex buffer created.\n");
+		vulkan_create_rendering_pipeline(&vulkan_info);
+		printf("[INFO] Done.\n");
 
+	} catch (VkException e) {
+		printf("Exception: %s\n", vktostring(e.what()));
+		return 1;
+	}
 	//=========== RENDERING
 	
 	vulkan_frame_info_t frame_info = { 0 };
@@ -99,16 +96,12 @@ int main(int argc, char** argv) {
 	scene.model = glm::mat4(1.0f);
 	scene.view = glm::lookAt(camera, origin, up);
 	scene.projection = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 1000.0f);
+	vulkan_update_uniform_buffer(&vulkan_info, &scene);
 
-	res = vulkan_update_uniform_buffer(&vulkan_info, &scene);
-	if (res != VK_SUCCESS) {
-		printf("[ERROR] Unable to update uniform buffer.\n");
-		return 1;
-	}
-	printf("[INFO] Starting render loop.\n");
+
 
 	float delta_time = 1.0f / 1000.0;
-	for (uint32_t i = 0; i < 300; i++) {
+	for (uint32_t i = 0; ; i++) {
 		clock_t start_tick = clock();
 
 		float angle = 50.0f;

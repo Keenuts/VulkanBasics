@@ -11,4 +11,5 @@ class VkException : std::exception {
 
 	public:
 		VkException(VkResult res) : res(res) {}
+		VkResult what() { return res; }
 };

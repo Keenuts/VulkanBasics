@@ -232,3 +232,28 @@ void image_view_create(vulkan_info_t *info, VkImage image, VkFormat format, VkIm
 	if (res != VK_SUCCESS)
 		throw VkException(res);
 }
+
+void image_sampler_create(vulkan_info_t *info, VkSampler *sampler) {
+	VkSamplerCreateInfo sampler_info = { };
+	sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	sampler_info.pNext = NULL;
+	sampler_info.flags = 0;
+	sampler_info.magFilter = VK_FILTER_LINEAR;
+	sampler_info.minFilter = VK_FILTER_LINEAR;
+	sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sampler_info.mipLodBias = 0.0f;
+	sampler_info.anisotropyEnable = VK_TRUE;
+	sampler_info.maxAnisotropy = 16;
+	sampler_info.compareEnable = VK_FALSE;
+	sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
+	sampler_info.minLod = 0.0f;
+	sampler_info.maxLod = 0.0f;
+	sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+	sampler_info.unnormalizedCoordinates = VK_FALSE;
+
+	VkResult res = vkCreateSampler(info->device, &sampler_info, NULL, sampler);
+	assert(res == VK_SUCCESS);
+}

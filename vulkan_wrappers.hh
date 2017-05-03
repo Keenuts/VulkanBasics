@@ -17,3 +17,4 @@ void image_create(vulkan_info_t *info, uint32_t w, uint32_t h,
 void image_copy(vulkan_info_t *info, VkImage src, VkImage dst, uint32_t width,
 								uint32_t height);
 void image_view_create(vulkan_info_t *info, VkImage image, VkFormat format, VkImageView *view);
+void image_sampler_create(vulkan_info_t *info, VkSampler *sampler);
