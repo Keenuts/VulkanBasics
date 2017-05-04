@@ -126,8 +126,7 @@ struct queue_creation_info_t {
 	VkQueueFamilyProperties *family_props;
 };
 
-static void vulkan_create_device(vulkan_info_t *info,
-												queue_creation_info_t *queue_info) {
+static void vulkan_create_device(vulkan_info_t *info, queue_creation_info_t *queue_info) {
 	//initialize info.device
 	VkResult res;
 
@@ -201,6 +200,9 @@ static void vulkan_create_queues(vulkan_info_t *info, queue_creation_info_t *que
 
 	vkGetDeviceQueue(info->device, queues->graphic_family_index, 0, &info->graphic_queue);
 	vkGetDeviceQueue(info->device, queues->present_family_index, 0, &info->present_queue);
+
+	info->graphic_queue_family_index = queues->graphic_family_index;
+	info->present_queue_family_index = queues->present_family_index;
 }
 
 static void vulkan_create_KHR_surface(vulkan_info_t *info) {
@@ -452,6 +454,7 @@ static void vulkan_create_uniform_buffer(vulkan_info_t *info, uint32_t size) {
 
 void vulkan_update_uniform_buffer(vulkan_info_t *info, scene_info_t *payload) {
 	VkResult res = VK_SUCCESS;
+	vkWaitForFences(info->device, 1, &info->swapchain_buffers[info->current_buffer].fence, VK_TRUE, UINT64_MAX);
 
 	void *data = NULL;
 	res = vkMapMemory(info->device, info->uniform_buffer.memory, 0, sizeof(payload), 0,
@@ -1054,7 +1057,6 @@ void vulkan_update_texture(vulkan_info_t *info, texture_t *tex, stbi_uc* data) {
 	image_copy(info, tex->storage_image, tex->texture_image, tex->width, tex->height);
 }
 
-
 //===== CLEAN FUNCTIONS
 
 static void vulkan_destroy_framebuffers(VkDevice d, VkFramebuffer *b, uint32_t c) {
@@ -1080,12 +1082,21 @@ void vulkan_unload_shaders(vulkan_info_t *info, uint32_t count) {
 	delete[] info->shader_stages;
 }
 
+void vulkan_unload_texture(vulkan_info_t *info, texture_t *texture) {
+	vkDestroyImage(info->device, texture->storage_image, NULL);
+	vkDestroyImage(info->device, texture->texture_image, NULL);
+	vkFreeMemory(info->device, texture->storage_memory, NULL);
+	vkFreeMemory(info->device, texture->texture_memory, NULL);
+}
+
 void vulkan_cleanup(vulkan_info_t *info) {
 	vkDestroyPipeline(info->device, info->pipeline, NULL);
 	vulkan_destroy_data_buffer(info->device, info->vertex_buffer);
 	vulkan_destroy_framebuffers(info->device, info->framebuffers,
 															info->swapchain_images_count);
 
+	vkDestroyImageView(info->device, info->texture_view, NULL);
+	vkDestroySampler(info->device, info->texture_sampler, NULL);
 
 	vkDestroyRenderPass(info->device, info->render_pass, NULL);
 	vkDestroyDescriptorPool(info->device, info->descriptor_pool, NULL);

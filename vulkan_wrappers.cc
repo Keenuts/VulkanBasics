@@ -23,7 +23,7 @@ uint32_t get_queue_family_index(VkQueueFlagBits bits, uint32_t count, VkQueueFam
 	return (uint32_t)-1;
 }
 
-VkCommandBuffer command_begin_disposable(vulkan_info_t *info) {
+VkCommandBuffer create_command_buffer(vulkan_info_t *info) {
 	VkCommandBufferAllocateInfo alloc_info = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
 		.pNext = NULL,
@@ -32,20 +32,24 @@ VkCommandBuffer command_begin_disposable(vulkan_info_t *info) {
 		.commandBufferCount = 1,
 	};
 
-	VkResult res = VK_SUCCESS;
 	VkCommandBuffer command;
 
-	res = vkAllocateCommandBuffers(info->device, &alloc_info, &command);
+	VkResult res = vkAllocateCommandBuffers(info->device, &alloc_info, &command);
 	if (res != VK_SUCCESS)
 		throw VkException(res);
+	return command;
+}
+
+VkCommandBuffer command_begin_disposable(vulkan_info_t *info) {
 	
+	VkCommandBuffer command = create_command_buffer(info);
 	VkCommandBufferBeginInfo begin_info = {};
 	begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	begin_info.pNext = NULL;
 	begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	begin_info.pInheritanceInfo = NULL;
 
-	res = vkBeginCommandBuffer(command, &begin_info);
+	VkResult res = vkBeginCommandBuffer(command, &begin_info);
 	assert(res == VK_SUCCESS);
 	return command;
 }

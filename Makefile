@@ -12,6 +12,7 @@ OBJ=								\
 	window.o					\
 	vulkan_render.o		\
 	vulkan_wrappers.o	\
+	assets_loader.o   \
 	stb_image.o				\
 	tiny_obj_loader.o
 

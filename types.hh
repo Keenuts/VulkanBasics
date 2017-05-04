@@ -51,6 +51,9 @@ struct swapchain_buffer_t {
 	VkImage image;
 	VkImageView view;
 	VkFramebuffer framebuffer;
+	VkCommandBuffer command;
+	VkCommandBuffer present_transition_cmd;
+	VkFence fence;
 };
 
 struct data_buffer_t {

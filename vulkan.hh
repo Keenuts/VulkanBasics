@@ -54,6 +54,8 @@ struct vulkan_info_t {
 	
 	VkQueue graphic_queue;
 	VkQueue present_queue;
+	uint32_t graphic_queue_family_index;
+	uint32_t present_queue_family_index;
 
 	VkCommandPool cmd_pool;
 	VkCommandBuffer cmd_buffer;
@@ -63,12 +65,17 @@ struct vulkan_info_t {
 
 	VkSwapchainKHR swapchain;
 	VkImage *swapchain_images;
+	VkSemaphore *semaphore_acquired;
+	VkSemaphore *semaphore_drawing;
+	VkSemaphore *semaphore_ownership;
+	VkFence *fences;
 	uint32_t swapchain_images_count;
 
 	image_buffer_t depth_buffer;
 	data_buffer_t uniform_buffer;
 	swapchain_buffer_t *swapchain_buffers;
 	uint32_t current_buffer;
+	uint32_t frame_index;
 
 	VkDescriptorSetLayout *descriptor_layouts;
 	VkDescriptorSet *descriptor_sets;
@@ -110,4 +117,5 @@ void vulkan_begin_command_buffer(vulkan_info_t *info);
 void vulkan_render_frame(vulkan_info_t *info);
 
 void vulkan_unload_shaders(vulkan_info_t *info, uint32_t count);
+void vulkan_unload_texture(vulkan_info_t *info, texture_t *texture);
 void vulkan_cleanup(vulkan_info_t *info);
