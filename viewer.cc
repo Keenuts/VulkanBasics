@@ -1,6 +1,6 @@
 #include <vector>
 #include <sstream>
-#include <time.h>
+#include <chrono>
 #include <inttypes.h>
 
 #include "helpers.hh"
@@ -19,7 +19,7 @@
 #define VERT_SHADER "assets/shaders/diffuse_vert.spv"
 
 #define LIMIT_FRAMERATE 1
-#define FRAMERATE 60.0f
+#define FRAMERATE 120.0f
 #define CLOCKS_PER_FRAME ((long int)((1.0F / FRAMERATE) * CLOCKS_PER_SEC))
 #define DEG2RAD (0.20943951023f)
 
@@ -106,24 +106,40 @@ int main(int argc, char** argv) {
 	//=========== RENDERING
 
 	float delta_time = 1.0f / 1000.0;
+	auto start_time = std::chrono::steady_clock::now();
+	uint64_t frame_count = 0;
+	printf("FPS:\n");
+
 	for (uint32_t i = 0; ; i++) {
 
 		render_get_frame(&vulkan_info);
 
-		clock_t start_tick = clock();
+		clock_t frame_start = clock();
 		float angle = 50.0f;
 		scene.model = glm::rotate(scene.model, angle * delta_time * DEG2RAD, glm::vec3(0,1,0));
 		vulkan_update_uniform_buffer(&vulkan_info, &scene);
 
 		render_submit(&vulkan_info, &frame_info);
 
-		clock_t end_tick = clock();
+		clock_t frame_end = clock();
+		clock_t early_time = CLOCKS_PER_FRAME - (frame_end - frame_start);
 
-		clock_t early_time = CLOCKS_PER_FRAME - (end_tick - start_tick);
-		(void)early_time;
 #if LIMIT_FRAMERATE
 		usleep(early_time);
+#else
+		(void)early_time;
 #endif
+
+		frame_count++;
+
+		auto cur_time = std::chrono::steady_clock::now();
+		auto diff = cur_time - start_time;
+
+		if (std::chrono::duration_cast<std::chrono::milliseconds>(diff).count() > 1000.0f) {
+			printf("\b\rFPS: %zu     \n", frame_count);
+			frame_count = 0;
+			start_time = cur_time;
+		}
 	}
 
 	printf("\n\n\n");

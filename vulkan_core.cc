@@ -58,6 +58,7 @@ static void vulkan_startup(vulkan_info_t *info) {
 	extension_names.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 
 #ifdef DEBUG
+	printf("[INFO] Validation layers enabled.\n");
 	validation_layers.push_back("VK_LAYER_LUNARG_standard_validation");
 	validation_layers.push_back("VK_LAYER_LUNARG_swapchain");
 	validation_layers.push_back("VK_LAYER_LUNARG_monitor");
